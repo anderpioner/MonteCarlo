@@ -63,11 +63,11 @@ with col_dist1:
         st.markdown("🎲 **Model:** Beta Distribution")
         st.info("Model win rate variability across paths. Rule: p ~ Beta(α, β)")
         
-        wr_avg = st.number_input("Average Win Rate (%)", value=22.0, help="This is the long-term average win rate you expect. Internally we use a Beta distribution because it is perfect for modeling probabilities (0–100%) that vary over time.") / 100.0
+        wr_avg = st.number_input("Average Win Rate (%)", value=28.0, help="This is the long-term average win rate you expect. Internally we use a Beta distribution because it is perfect for modeling probabilities (0–100%) that vary over time.") / 100.0
         wr_vol = st.number_input("Win Rate Std Dev (%)", value=6.0, help="Controls how stable or unstable your win rate is across different market conditions. Higher value = more variation between good and bad periods → larger drawdowns possible. We use Beta distribution to keep values realistic between ~5–40%.") / 100.0
         
-        wr_min_p = st.number_input("Min Plausible Win Rate (%)", value=10.0, help="The lowest win rate you think is realistically possible (even in very bad markets). Helps prevent the model from generating unrealistically low values.") / 100.0
-        wr_max_p = st.number_input("Max Plausible Win Rate (%)", value=35.0, help="The highest win rate you believe the system can achieve in favorable conditions. Used to shape the tails of the Beta distribution.") / 100.0
+        wr_min_p = st.number_input("Min Plausible Win Rate (%)", value=22.0, help="The lowest win rate you think is realistically possible (even in very bad markets). Helps prevent the model from generating unrealistically low values.") / 100.0
+        wr_max_p = st.number_input("Max Plausible Win Rate (%)", value=33.0, help="The highest win rate you believe the system can achieve in favorable conditions. Used to shape the tails of the Beta distribution.") / 100.0
         
         st.caption("This section uses a Beta distribution because win rates are proportions (0–1) that naturally vary and stay bounded. It captures regime changes (bad markets ~18%, good ~30%) much better than a fixed percentage. [Learn more](https://distribution-explorer.github.io/continuous/beta.html)")
         
@@ -83,7 +83,7 @@ with col_dist2:
         st.markdown("📈 **Model:** Log-Normal Distribution")
         st.info("Outlier Capture Model (Fat Tail).")
         
-        def_median, def_mean, def_prob10, def_max = 3.0, 7.0, 0.10, 50.0
+        def_median, def_mean, def_prob10, def_max = 5.0, 20.0, 0.25, 60.0
 
         st.caption("This section uses a Log-Normal distribution to create realistic fat right tails — perfect for systems where a small % of trades deliver very large payoffs and drive most of the profit.")
         
@@ -93,7 +93,6 @@ with col_dist2:
         rr_tail_help = """
         This is a percentage (%).  
         Enter the approximate % of ALL trades (winners + losers) that you realistically expect to have a Reward:Risk ratio of 10:1 or better.  
-
         Example: If you set 15%, it means roughly 15 out of every 100 trades should be big winners paying at least 10 times your risk (R:R ≥ 10).  
         The other ~85% of trades will have smaller payoffs (including all losers and small/medium winners).  
 
