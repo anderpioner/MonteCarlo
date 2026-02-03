@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
+from plotly.subplots import make_subplots
 from scipy.stats import norm, beta
 from simulation import run_monte_carlo, get_beta_params, sample_beta_dist, get_lognormal_params, sample_lognormal_dist, lognormal_clipped_mean, get_cond_mean_bounds
 
@@ -53,7 +54,7 @@ st.sidebar.header("General Parameters")
 start_balance = st.sidebar.number_input("Starting Balance ($)", min_value=0.0, value=10000.0, step=1000.0, format="%.2f")
 trades_per_sim = st.sidebar.number_input("Trades per Simulation", min_value=1, max_value=5000, value=50)
 risk_per_trade = st.sidebar.number_input("Risk per Trade (%)", min_value=0.0, max_value=100.0, value=0.30) / 100.0
-num_sims = 1000
+num_sims = 5000
 
 # Distribution Configuration
 col_dist1, col_dist2 = st.columns(2)
@@ -176,7 +177,7 @@ with col_dist2:
             st.info(f"ℹ️ **Model Fitting Notice:** To match your Outlier % and Median, the system is using a distribution with a very fat right tail. Since you have chosen to cap winners at **{rr_max_cap}:1** for realism, the simulation will ignore the 'infinite' mathematical tail of the Log-Normal model. This ensures your results base themselves on your realistic expectations rather than extreme statistical outliers.")
 
 st.markdown("---")
-if st.button("🚀 Run Stress Test", type="primary", use_container_width=True):
+if st.button(f"🚀 Run Stress Test ({num_sims} simulations)", type="primary", use_container_width=True):
     st.rerun()
 st.markdown("---")
 
@@ -320,50 +321,76 @@ with summary_col3:
         - **Simulated Mean:** {np.mean(rr_samples):.2f}
         """)
 
-# RUN SIMULATION
-
+# RUN SIMULATION VISUALIZATION
 median_path = np.median(results, axis=0)
 x = np.arange(trades_per_sim + 1)
+all_final_values = results[:, -1]
 
-fig = go.Figure()
+# Create subplots: 1 row, 2 columns (Equity Paths + Distribution)
+fig = make_subplots(
+    rows=1, cols=2, 
+    shared_yaxes=True, 
+    column_widths=[0.85, 0.15],
+    horizontal_spacing=0.01,
+    specs=[[{"secondary_y": False}, {"secondary_y": False}]]
+)
+
+# 1. Main Equity Paths (Left)
 for i in range(num_sims):
     fig.add_trace(go.Scatter(
         x=x, y=results[i],
         mode='lines',
         line=dict(width=0.5, color='rgba(150, 150, 150, 0.1)'),
         hoverinfo='skip', showlegend=False
-    ))
+    ), row=1, col=1)
     
 fig.add_trace(go.Scatter(
     x=x, y=median_path,
     mode='lines', line=dict(width=3, color='#007bff'),
     name='Median Curve'
-))
+), row=1, col=1)
+
+# 2. Final Equity Distribution (Right / 90 degrees)
+fig.add_trace(go.Histogram(
+    y=all_final_values,
+    name='Final Distribution',
+    marker_color='rgba(0, 123, 255, 0.8)',
+    orientation='h',
+    nbinsy=100, # Increased granularity
+    showlegend=False,
+    hovertemplate='Balance: %{y:,.0f}<br>Paths: %{x}<extra></extra>'
+), row=1, col=2)
 
 # Calculate scale to be "centered" around paths (excluding extreme outliers)
-all_final_values = results[:, -1]
 y_min = np.percentile(results, 5) # 5th percentile of all points
 y_max = np.percentile(results, 95) # 95th percentile of all points
 
 # Ensure start balance and median are always visible
 y_min = min(y_min, start_balance * 0.8)
-y_max = max(y_max, median_path[-1] * 1.2)
+y_max = max(y_max, median_path[-1] * 1.25)
 
 fig.update_layout(
-    xaxis_title="Trade Number", yaxis_title="Balance ($)",
-    template="plotly_white", hovermode="x unified",
+    template="plotly_white", 
+    hovermode="x unified",
     height=550,
     margin=dict(l=60, r=20, t=10, b=50),
-    yaxis=dict(range=[y_min, y_max]),
     showlegend=True,
-    legend=dict(yanchor="top", y=0.98, xanchor="right", x=0.99, bgcolor="rgba(255, 255, 255, 0.5)")
+    legend=dict(yanchor="top", y=0.98, xanchor="right", x=0.84, bgcolor="rgba(255, 255, 255, 0.5)")
 )
+
+# Update X-Axes
+fig.update_xaxes(title_text="Trade Number", row=1, col=1)
+fig.update_xaxes(title_text="Density", showticklabels=False, row=1, col=2)
+
+# Update Y-Axes (Shared)
+fig.update_yaxes(title_text="Balance ($)", range=[y_min, y_max], row=1, col=1)
+fig.update_yaxes(showgrid=False, row=1, col=2)
 
 # Add Title as Annotation inside the chart
 fig.add_annotation(
     xref="paper", yref="paper",
     x=0.01, y=0.99,
-    text=f"<b>Equity Growth</b><br><span style='font-size: 12px; color: #666'>(Final Median: ${median_path[-1]:,.2f})</span>",
+    text=f"<b>Equity Growth & Distribution</b><br><span style='font-size: 12px; color: #666'>(Final Median: ${median_path[-1]:,.2f})</span>",
     showarrow=False,
     font=dict(size=18, color="#333"),
     align="left",
@@ -374,6 +401,7 @@ fig.add_annotation(
 fig.add_annotation(
     x=trades_per_sim,
     y=median_path[-1],
+    xref="x1", yref="y1",
     text=f" <b>${median_path[-1]:,.2f}</b>",
     showarrow=True,
     arrowhead=2,
