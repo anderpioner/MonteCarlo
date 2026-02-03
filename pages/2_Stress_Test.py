@@ -98,8 +98,7 @@ with col_dist2:
         
         def_median, def_mean, def_prob10, def_max = 5.0, 5.17, 0.10, 60.0
 
-        st.caption("This section uses a Log-Normal distribution because it naturally creates fat right tails — perfect for systems where a small % of trades deliver very large payoffs and drive most of the profit.")
-        
+
         rr_median = st.number_input("Median R:R (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades. For outlier systems, this is usually low (2–4×).")
         rr_mean_cond = st.number_input("Average R:R (excluding outliers > 10:1)", value=def_mean, min_value=1.1, max_value=9.9, help="The average size of your 'normal' (non-outlier) winning trades. Must be less than 10. The system will automatically add the big outliers on top of this based on the percentage you provide below.")
         
