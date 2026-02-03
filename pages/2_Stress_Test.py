@@ -1,5 +1,7 @@
 import streamlit as st
 import numpy as np
+import pandas as pd
+import io
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
 from plotly.subplots import make_subplots
@@ -100,27 +102,26 @@ with col_dist2:
         def_median, def_mean, def_prob10, def_max = 5.0, 5.17, 0.10, 60.0
 
 
-        rr_median = st.number_input("Median R:R (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades. For outlier systems, this is usually low (2–4×).")
-        rr_mean_cond = st.number_input("Average R:R (excluding outliers > 10:1)", value=def_mean, min_value=1.1, max_value=9.9, help="The average size of your 'normal' (non-outlier) winning trades. Must be less than 10. The system will automatically add the big outliers on top of this based on the percentage you provide below.")
+        rr_median = st.number_input("Median R:R of Wins (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades. For outlier systems, this is usually low (2–4×).")
+        rr_mean_cond = st.number_input("Average R:R of Wins (Normal range < 10:1)", value=def_mean, min_value=1.1, max_value=9.9, help="The average size of your 'normal' (non-outlier) winning trades. Must be less than 10. The system will automatically add the big outliers on top of this based on the percentage you provide below.")
         
         rr_tail_help = """
         This is a percentage (%).  
-        Enter the approximate % of ALL trades (winners + losers) that you realistically expect to have a Reward:Risk ratio of 10:1 or better.  
-        Example: If you set 15%, it means roughly 15 out of every 100 trades should be big winners paying at least 10 times your risk (R:R ≥ 10).  
-        The other ~85% of trades will have smaller payoffs (including all losers and small/medium winners).  
+        Enter the approximate % of WINNING trades that you realistically expect to have a Reward:Risk ratio of 10:1 or better.  
+        Example: If you set 15%, it means roughly 15 out of every 100 winning trades should be big winners paying at least 10 times your risk (R:R ≥ 10).  
 
         **Why this matters:**  
-        - **5–10%** → more balanced system, less explosive  
-        - **10–18%** → typical for good outlier-capture systems (most common sweet spot)  
-        - **18–25%** → very aggressive, high dependence on rare big winners  
-        - **>25%** → extreme asymmetry, huge variance in results  
+        - **5–10%** of wins → more balanced system, less explosive  
+        - **10–18%** of wins → typical for good outlier-capture systems (most common sweet spot)  
+        - **18–25%** of wins → very aggressive, high dependence on rare big winners  
+        - **>25%** of wins → extreme asymmetry, huge variance in results  
 
-        In real outlier strategies, this number often falls between 10% and 20%.  
-        If you have backtest data, count: (number of trades with profit ≥ 10 × risk) ÷ (total trades) × 100
+        In real outlier strategies, this number often falls between 10% and 20% of winning trades.  
+        If you have backtest data, count: (number of trades with profit ≥ 10 × risk) ÷ (total number of winning trades) × 100
         """
         
         rr_prob10_raw = st.number_input(
-            "How fat are the tails? (% of trades with R:R ≥ 10:1)", 
+            "Outlier Win Frequency (% of WINNING trades ≥ 10:1)", 
             min_value=0.1, 
             max_value=60.0, 
             value=float(def_prob10 * 100), 
@@ -242,7 +243,7 @@ with st.spinner("Simulating..."):
     # Reward:Risk is still dynamic per trade within each path
     rr_matrix = sample_lognormal_dist(rr_mu, rr_sigma, (num_sims, trades_per_sim), clip_min=0.1, clip_max=rr_max_cap)
     
-    results = run_monte_carlo(start_balance, trades_per_sim, wr_vector, rr_matrix, risk_per_trade, num_sims)
+    results, outcomes_matrix = run_monte_carlo(start_balance, trades_per_sim, wr_vector, rr_matrix, risk_per_trade, num_sims)
     
     # PERFORMANCE CALCULATIONS
     final_balances = results[:, -1]
@@ -317,8 +318,8 @@ with summary_col3:
     with st.container(border=True):
         st.markdown("##### Reward:Risk (Log-Normal)")
         st.markdown(f"""
-        - **Percentiles:** 50%: {p50_rr:.1f} | 75%: {p75_rr:.1f} | 90%: {p90_rr:.1f} | 95%: {p95_rr:.1f}
-        - **Probabilities:** R:R>10: {prob_gt10*100:.1f}% | R:R>20: {prob_gt20*100:.1f}% | R:R>50: {prob_gt50*100:.1f}%
+        - **Percentiles (Wins):** 50%: {p50_rr:.1f} | 75%: {p75_rr:.1f} | 90%: {p90_rr:.1f} | 95%: {p95_rr:.1f}
+        - **Win Probabilities:** R:R>10: {prob_gt10*100:.1f}% | R:R>20: {prob_gt20*100:.1f}% | R:R>50: {prob_gt50*100:.1f}%
         - **Theoretical Mean:** {total_theo_mean:.2f}
         - **Simulated Mean:** {np.mean(rr_samples):.2f}
         """)
@@ -430,3 +431,99 @@ with s_col2:
         st.error(f"Risk of Ruin (40% DD): **{(bankruptcy/num_sims)*100:.1f}%**")
     else:
         st.info("No simulation reached ruin (based on 40% drawdown).")
+
+# --- NEW SECTION: DRAW SETS OF R:R ---
+st.markdown("---")
+st.subheader("🎯 Sampled Trade Sets (R:R Sequences)")
+
+# Pick 10 random indices for sampling sets
+num_sampled_sets = 10
+sampled_indices = np.random.choice(num_sims, size=num_sampled_sets, replace=False)
+
+sampled_data = []
+for i, idx in enumerate(sampled_indices):
+    rr_seq = rr_matrix[idx]
+    path = results[idx]
+    outcomes = outcomes_matrix[idx]
+    
+    # Calculate metrics for this specific set
+    total_ret = ((path[-1] / start_balance) - 1) * 100
+    
+    set_win_rate = (np.sum(outcomes == 1) / trades_per_sim) * 100
+    set_rr_avg = np.mean(rr_seq[outcomes == 1]) if np.any(outcomes == 1) else 0.0
+    
+    # Create a display sequence where losses are shown as -1
+    display_rr_seq = np.where(outcomes == 1, rr_seq, -1.0)
+    
+    sampled_data.append({
+        "Set": f"Set {i+1}",
+        "Total Return (%)": f"{total_ret:+.2f}%",
+        "Win Average (%)": f"{set_win_rate:.1f}%",
+        "Avg Win R:R": f"{set_rr_avg:.2f}",
+        "RR_Sequence": display_rr_seq,
+        "Outcomes": outcomes,
+        "Raw_Return": total_ret,
+        "Raw_WinRate": set_win_rate,
+        "Raw_RR": set_rr_avg
+    })
+
+# R:R Sequence Chart
+fig_sets = go.Figure()
+colors = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
+
+for i, data in enumerate(sampled_data):
+    fig_sets.add_trace(go.Scatter(
+        x=np.arange(1, trades_per_sim + 1),
+        y=data["RR_Sequence"],
+        mode='lines+markers',
+        name=data["Set"],
+        line=dict(color=colors[i], width=1),
+        marker=dict(size=4),
+        hovertemplate="Trade %{x}<br>R:R: %{y:.2f}<extra></extra>"
+    ))
+
+fig_sets.update_layout(
+    template="plotly_white",
+    height=400,
+    margin=dict(l=60, r=20, t=20, b=50),
+    xaxis_title="Trade Number",
+    yaxis_title="Reward:Risk Ratio",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+)
+
+with st.container(border=True):
+    st.plotly_chart(fig_sets, use_container_width=True)
+
+# Summary Table
+table_df = pd.DataFrame(sampled_data)[["Set", "Total Return (%)", "Win Average (%)", "Avg Win R:R"]]
+st.markdown("##### Sampled Sets Summary")
+st.dataframe(table_df.set_index("Set").T, use_container_width=True)
+
+# Excel Export
+def to_excel(sampled_data):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Sheet 1: Summary
+        summary_df = pd.DataFrame(sampled_data)[["Set", "Total Return (%)", "Win Average (%)", "Avg Win R:R"]]
+        summary_df.to_sheet = writer.book.create_sheet("Summary") # Dummy to trigger writer
+        summary_df.to_excel(writer, index=False, sheet_name='Summary')
+        
+        # Sheet 2: All sequences
+        seq_dict = {"Trade": np.arange(1, trades_per_sim + 1)}
+        for data in sampled_data:
+            seq_dict[f"{data['Set']} R:R"] = data["RR_Sequence"]
+            seq_dict[f"{data['Set']} Result"] = ["Win" if o == 1 else "Loss" for o in data["Outcomes"]]
+        
+        seq_df = pd.DataFrame(seq_dict)
+        seq_df.to_excel(writer, index=False, sheet_name='Trade Sequences')
+        
+    return output.getvalue()
+
+excel_data = to_excel(sampled_data)
+st.download_button(
+    label="📥 Export Sets to Excel",
+    data=excel_data,
+    file_name="monte_carlo_sampled_sets.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True
+)

@@ -8,15 +8,16 @@ def run_monte_carlo(starting_balance, trades_per_sim, win_rate, rr_ratio, risk_p
     Runs Monte Carlo simulations. 
     win_rate can be a scalar, a vector (num_simulations,), or a matrix (num_simulations, trades_per_sim)
     rr_ratio can be a scalar OR a matrix (num_simulations, trades_per_sim)
+    Returns: (results, outcomes_matrix)
     """
     results = np.zeros((num_simulations, trades_per_sim + 1))
+    outcomes_matrix = np.zeros((num_simulations, trades_per_sim))
     results[:, 0] = starting_balance
     
     # Check dimensions for win_rate
     if isinstance(win_rate, np.ndarray):
         if win_rate.ndim == 1:
             # One win rate per path (p fixed for each simulation run)
-            # Expand to (num_simulations, 1) to use broadcasting
             wr_vector = win_rate.reshape(-1, 1)
         else:
             # Dynamic win rate per trade (matrix)
@@ -29,18 +30,17 @@ def run_monte_carlo(starting_balance, trades_per_sim, win_rate, rr_ratio, risk_p
 
     for i in range(1, trades_per_sim + 1):
         if isinstance(win_rate, np.ndarray) and win_rate.ndim == 2:
-            # win_rate is (num_simulations, trades_per_sim)
             random_vals = np.random.random(size=num_simulations)
             outcomes = np.where(random_vals < win_rate[:, i-1], 1, -1)
         elif wr_vector is not None:
-            # win_rate is a scalar or (num_simulations, 1) vector
             random_vals = np.random.random(size=num_simulations)
             current_p = wr_vector if not isinstance(wr_vector, np.ndarray) else wr_vector.flatten()
             outcomes = np.where(random_vals < current_p, 1, -1)
         else:
-            # Fallback (should not happen with new logic)
             outcomes = np.random.choice([1, -1], size=num_simulations, p=[win_rate, 1 - win_rate])
         
+        outcomes_matrix[:, i-1] = outcomes
+
         if is_rr_dynamic:
             current_rr = rr_ratio[:, i-1]
             multipliers = np.where(outcomes == 1, 1 + (risk_per_trade * current_rr), 1 - risk_per_trade)
@@ -49,7 +49,7 @@ def run_monte_carlo(starting_balance, trades_per_sim, win_rate, rr_ratio, risk_p
         
         results[:, i] = results[:, i-1] * multipliers
         
-    return results
+    return results, outcomes_matrix
 
 def get_beta_params(mean, std):
     """
