@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
+from scipy.optimize import brentq, minimize_scalar
 
 def run_monte_carlo(starting_balance, trades_per_sim, win_rate, rr_ratio, risk_per_trade, num_simulations=1000):
     """
@@ -99,7 +101,6 @@ def lognormal_cond_mean(mu, sigma, T=10):
     Formula: E[X | X < T] = E[X] * Phi((ln(T) - mu - sigma^2) / sigma) / Phi((ln(T) - mu) / sigma)
     where Phi is the standard normal CDF.
     """
-    from scipy.stats import norm
     if sigma <= 0: return np.exp(mu)
     
     phi1 = norm.cdf((np.log(T) - mu - sigma**2) / sigma)
@@ -115,7 +116,6 @@ def lognormal_clipped_mean(mu, sigma, U):
     Calculates E[clip(X, 0, U)] for X ~ LogNormal(mu, sigma).
     This handles the impact of 'rr_max_cap' on the expectancy.
     """
-    from scipy.stats import norm
     if sigma <= 0: return min(np.exp(mu), U)
     
     phi_d1 = norm.cdf((np.log(U) - mu - sigma**2) / sigma)
@@ -129,7 +129,6 @@ def get_cond_mean_bounds(mu, T=10):
     """
     Finds the mathematical range [min, max] of E[X | X < T] for a fixed mu.
     """
-    from scipy.optimize import minimize_scalar
     
     # Maximize E[X | X < T]
     res_max = minimize_scalar(lambda s: -lognormal_cond_mean(mu, s, T), bounds=(0.01, 10.0), method='bounded')
@@ -150,9 +149,6 @@ def get_lognormal_params(median, mean_no_outliers, prob_gt_10=None):
     """
     mu = np.log(median)
     
-    # 1. Sigma derived from Mean WITHOUT outliers (X < 10)
-    # We solve: lognormal_cond_mean(mu, sigma, 10) = mean_no_outliers
-    from scipy.optimize import brentq
     
     # Check mathematical limits
     min_p, max_p = get_cond_mean_bounds(mu, 10)
@@ -163,7 +159,6 @@ def get_lognormal_params(median, mean_no_outliers, prob_gt_10=None):
     try:
         if mean_no_outliers >= max_p:
             # If requested mean is too high, use sigma that gets closest to max
-            from scipy.optimize import minimize_scalar
             res = minimize_scalar(lambda s: -lognormal_cond_mean(mu, s, 10), bounds=(0.01, 10.0), method='bounded')
             sigma_mean = res.x
         elif mean_no_outliers <= min_p:
@@ -183,7 +178,6 @@ def get_lognormal_params(median, mean_no_outliers, prob_gt_10=None):
     # 2. Sigma derived from Probability > 10:
     # P(X > 10) = 1 - Phi((ln(10) - mu) / sigma) = prob_gt_10
     if prob_gt_10 is not None and prob_gt_10 > 0:
-        from scipy.stats import norm
         target_z = norm.ppf(1 - prob_gt_10)
         if target_z != 0:
             sigma_calib = (np.log(10) - mu) / target_z
