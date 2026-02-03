@@ -159,7 +159,7 @@ with col_dist2:
         """)
 
         if total_theo_mean > simulated_mean * 1.5:
-            st.warning(f"⚠️ **Heavy Clipping:** The distribution's tail is much fatter than your Cap ({rr_max_cap}). You are losing significant expectancy ({total_theo_mean - simulated_mean:.2f} R) due to the cap. Consider increasing the Maximum realistic R:R if you believe larger winners are possible.")
+            st.info(f"ℹ️ **Model Fitting Notice:** To match your Outlier % and Median, the system is using a distribution with a very fat right tail. Since you have chosen to cap winners at **{rr_max_cap}:1** for realism, the simulation will ignore the 'infinite' mathematical tail of the Log-Normal model. This ensures your results base themselves on your realistic expectations rather than extreme statistical outliers.")
 
 st.markdown("---")
 if st.button("🚀 Run Stress Test", type="primary", use_container_width=True):
