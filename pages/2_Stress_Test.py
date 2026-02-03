@@ -54,7 +54,7 @@ st.sidebar.header("General Parameters")
 start_balance = st.sidebar.number_input("Starting Balance ($)", min_value=0.0, value=10000.0, step=1000.0, format="%.2f")
 trades_per_sim = st.sidebar.number_input("Trades per Simulation", min_value=1, max_value=5000, value=50)
 risk_per_trade = st.sidebar.number_input("Risk per Trade (%)", min_value=0.0, max_value=100.0, value=0.30) / 100.0
-num_sims = 5000
+# num_sims moved to UI section below
 
 # Distribution Configuration
 col_dist1, col_dist2 = st.columns(2)
@@ -177,7 +177,9 @@ with col_dist2:
             st.info(f"ℹ️ **Model Fitting Notice:** To match your Outlier % and Median, the system is using a distribution with a very fat right tail. Since you have chosen to cap winners at **{rr_max_cap}:1** for realism, the simulation will ignore the 'infinite' mathematical tail of the Log-Normal model. This ensures your results base themselves on your realistic expectations rather than extreme statistical outliers.")
 
 st.markdown("---")
-if st.button(f"🚀 Run Stress Test ({num_sims} simulations)", type="primary", use_container_width=True):
+num_sims = st.selectbox("Number of Simulations", options=[1000, 2000, 5000], index=0, help="Higher numbers provide more stable statistical data but take slightly longer to process.")
+
+if st.button("🚀 Run Stress Test", type="primary", use_container_width=True):
     st.rerun()
 st.markdown("---")
 
