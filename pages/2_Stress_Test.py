@@ -501,23 +501,26 @@ st.dataframe(table_df.set_index("Set").T, use_container_width=True)
 
 # Excel Export
 def to_excel(sampled_data):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Sheet 1: Summary
-        summary_df = pd.DataFrame(sampled_data)[["Set", "Total Return (%)", "Win Average (%)", "Avg Win R:R"]]
-        summary_df.to_sheet = writer.book.create_sheet("Summary") # Dummy to trigger writer
-        summary_df.to_excel(writer, index=False, sheet_name='Summary')
-        
-        # Sheet 2: All sequences
-        seq_dict = {"Trade": np.arange(1, trades_per_sim + 1)}
-        for data in sampled_data:
-            seq_dict[f"{data['Set']} R:R"] = data["RR_Sequence"]
-            seq_dict[f"{data['Set']} Result"] = ["Win" if o == 1 else "Loss" for o in data["Outcomes"]]
-        
-        seq_df = pd.DataFrame(seq_dict)
-        seq_df.to_excel(writer, index=False, sheet_name='Trade Sequences')
-        
-    return output.getvalue()
+    try:
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Sheet 1: Summary
+            summary_df = pd.DataFrame(sampled_data)[["Set", "Total Return (%)", "Win Average (%)", "Avg Win R:R"]]
+            summary_df.to_excel(writer, index=False, sheet_name='Summary')
+            
+            # Sheet 2: All sequences
+            seq_dict = {"Trade": np.arange(1, trades_per_sim + 1)}
+            for data in sampled_data:
+                seq_dict[f"{data['Set']} R:R"] = data["RR_Sequence"]
+                seq_dict[f"{data['Set']} Result"] = ["Win" if o == 1 else "Loss" for o in data["Outcomes"]]
+            
+            seq_df = pd.DataFrame(seq_dict)
+            seq_df.to_excel(writer, index=False, sheet_name='Trade Sequences')
+            
+        return output.getvalue()
+    except Exception as e:
+        st.error(f"Excel Export failed: {str(e)}")
+        return None
 
 excel_data = to_excel(sampled_data)
 st.download_button(

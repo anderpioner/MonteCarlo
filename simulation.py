@@ -176,7 +176,11 @@ def get_lognormal_params(median, mean_no_outliers, prob_gt_10=None):
             # Solution exists between 0.001 and the peak
             sigma_mean = brentq(objective, 0.001, 10.0)
     except Exception:
-        sigma_mean = 0.5 # Fallback
+        # If solver fails, try a fallback sigma
+        if mean_no_outliers > min_p:
+            return mu, 0.5
+        else:
+            return mu, 5.0
         
     # 2. Sigma derived from Probability > 10:
     # P(X > 10) = 1 - Phi((ln(10) - mu) / sigma) = prob_gt_10
