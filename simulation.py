@@ -75,12 +75,15 @@ def get_beta_params(mean, std):
     
     return alpha, beta
 
-def sample_beta_dist(alpha, beta, size):
+def sample_beta_dist(alpha, beta, size, clip_min=None, clip_max=None):
     """
     Samples p ~ Beta(alpha, beta).
     Each sample is in (0, 1).
     """
-    return np.random.beta(alpha, beta, size)
+    samples = np.random.beta(alpha, beta, size)
+    if clip_min is not None or clip_max is not None:
+        samples = np.clip(samples, clip_min if clip_min is not None else 0.0, clip_max if clip_max is not None else 1.0)
+    return samples
 
 def sample_gamma_dist(shape, scale, loc, size, clip_min=None, clip_max=None):
     """

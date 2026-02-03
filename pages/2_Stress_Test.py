@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
+from scipy.stats import norm, beta
 from simulation import run_monte_carlo, get_beta_params, sample_beta_dist, get_lognormal_params, sample_lognormal_dist, lognormal_clipped_mean, get_cond_mean_bounds
 
 st.set_page_config(page_title="Stress Test - Monte Carlo", layout="wide")
@@ -51,7 +52,7 @@ def get_gamma_params(mean, std, loc):
 st.sidebar.header("General Parameters")
 start_balance = st.sidebar.number_input("Starting Balance ($)", min_value=0.0, value=10000.0, step=1000.0, format="%.2f")
 trades_per_sim = st.sidebar.number_input("Trades per Simulation", min_value=1, max_value=5000, value=50)
-risk_per_trade = st.sidebar.number_input("Risk per Trade (%)", min_value=0.0, max_value=100.0, value=1.0) / 100.0
+risk_per_trade = st.sidebar.number_input("Risk per Trade (%)", min_value=0.0, max_value=100.0, value=0.30) / 100.0
 num_sims = 1000
 
 # Distribution Configuration
@@ -66,8 +67,8 @@ with col_dist1:
         wr_avg = st.number_input("Average Win Rate (%)", value=28.0, help="This is the long-term average win rate you expect. Internally we use a Beta distribution because it is perfect for modeling probabilities (0–100%) that vary over time.") / 100.0
         wr_vol = st.number_input("Win Rate Std Dev (%)", value=6.0, help="Controls how stable or unstable your win rate is across different market conditions. Higher value = more variation between good and bad periods → larger drawdowns possible. We use Beta distribution to keep values realistic between ~5–40%.") / 100.0
         
-        wr_min_p = st.number_input("Min Plausible Win Rate (%)", value=22.0, help="The lowest win rate you think is realistically possible (even in very bad markets). Helps prevent the model from generating unrealistically low values.") / 100.0
-        wr_max_p = st.number_input("Max Plausible Win Rate (%)", value=33.0, help="The highest win rate you believe the system can achieve in favorable conditions. Used to shape the tails of the Beta distribution.") / 100.0
+        wr_min_p = st.number_input("Min Plausible Win Rate (%)", value=14.3, help="The lowest win rate you think is realistically possible. The simulation will actively clip (limit) any sampled win rate to this minimum value to ensure realism.") / 100.0
+        wr_max_p = st.number_input("Max Plausible Win Rate (%)", value=44.7, help="The highest win rate you believe the system can achieve. The simulation will actively clip (limit) any sampled win rate to this maximum value.") / 100.0
         
         st.caption("This section uses a Beta distribution because win rates are proportions (0–1) that naturally vary and stay bounded. It captures regime changes (bad markets ~18%, good ~30%) much better than a fixed percentage. [Learn more](https://distribution-explorer.github.io/continuous/beta.html)")
         
@@ -76,6 +77,18 @@ with col_dist1:
         if wr_alpha is None:
             st.error(f"⚠️ Impossible Std Dev: {wr_vol*100:.1f}% for mean {wr_avg*100:.1f}%. Max allowed: {np.sqrt(wr_avg*(1-wr_avg))*100:.1f}%")
             st.stop()
+        
+        # Calculate naturally occurring tails (e.g. 0.5% and 99.5%)
+        suggested_min = beta.ppf(0.005, wr_alpha, wr_beta)
+        suggested_max = beta.ppf(0.995, wr_alpha, wr_beta)
+        
+        st.markdown(f"""
+        <div style="background-color: #e7f3ff; padding: 10px; border-radius: 5px; border-left: 5px solid #007bff; margin-top: 10px;">
+            <p style="margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #0056b3;">💡 Symmetrical Suggestion</p>
+            <p style="margin: 0; font-size: 12px; color: #333;">To avoid probability "spikes" at the edges, try using these bounds which match the distribution's natural tails:</p>
+            <p style="margin-top: 5px; font-weight: bold; font-size: 12px; color: #0056b3;">Min: {suggested_min*100:.1f}% | Max: {suggested_max*100:.1f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
 
 with col_dist2:
     with st.container(border=True):
@@ -83,7 +96,7 @@ with col_dist2:
         st.markdown("📈 **Model:** Log-Normal Distribution")
         st.info("Outlier Capture Model (Fat Tail).")
         
-        def_median, def_mean, def_prob10, def_max = 3.0, 3.38, 0.10, 60.0
+        def_median, def_mean, def_prob10, def_max = 5.0, 5.17, 0.10, 60.0
 
         st.caption("This section uses a Log-Normal distribution because it naturally creates fat right tails — perfect for systems where a small % of trades deliver very large payoffs and drive most of the profit.")
         
@@ -171,7 +184,7 @@ st.markdown("---")
 # Visualization of Distributions
 # Sampling for preview
 preview_size = 10000
-wr_samples = sample_beta_dist(wr_alpha, wr_beta, preview_size)
+wr_samples = sample_beta_dist(wr_alpha, wr_beta, preview_size, clip_min=wr_min_p, clip_max=wr_max_p)
 rr_samples = sample_lognormal_dist(rr_mu, rr_sigma, preview_size, clip_min=0.1, clip_max=rr_max_cap)
 
 # Statistical Calculations (Preview)
@@ -222,7 +235,7 @@ with prev_col2:
 # RUN SIMULATION (Moved up to gather metrics for Summary)
 with st.spinner("Simulating..."):
     # Rule 8: Draw ONE value p ~ Beta(α, β) for each path
-    wr_vector = sample_beta_dist(wr_alpha, wr_beta, num_sims)
+    wr_vector = sample_beta_dist(wr_alpha, wr_beta, num_sims, clip_min=wr_min_p, clip_max=wr_max_p)
     
     # Reward:Risk is still dynamic per trade within each path
     rr_matrix = sample_lognormal_dist(rr_mu, rr_sigma, (num_sims, trades_per_sim), clip_min=0.1, clip_max=rr_max_cap)
@@ -242,6 +255,7 @@ with st.spinner("Simulating..."):
         dd = (peaks - path) / peaks
         drawdowns.append(np.max(dd))
     max_dd_95 = np.percentile(drawdowns, 95) * 100
+    max_dd_std = np.std(drawdowns) * 100
     
     # Consecutive Losing Streaks (Median of Max Streaks)
     # We need to simulate the trades again or check PnL
@@ -281,7 +295,7 @@ with summary_col1:
         st.markdown("##### Simulation Performance")
         st.markdown(f"""
         - **Median Equity Growth:** {equity_growth:+.1f}%
-        - **Max Drawdown (95th):** {max_dd_95:.1f}%
+        - **Max Drawdown (95th):** {max_dd_95:.1f}% | Std Dev: {max_dd_std:.1f}%
         - **Max Loss Streak:** Median: {median_streak:.0f} | 95th: {p95_streak:.0f}
         - **Total Trades per Session:** {trades_per_sim}
         - **Profit Probability:** {(win_sims/num_sims)*100:.1f}%
@@ -308,7 +322,6 @@ with summary_col3:
         """)
 
 # RUN SIMULATION
-st.markdown("---")
 
 median_path = np.median(results, axis=0)
 x = np.arange(trades_per_sim + 1)
