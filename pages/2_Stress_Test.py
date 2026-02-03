@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 from scipy.stats import norm, beta
 from simulation import run_monte_carlo, get_beta_params, sample_beta_dist, get_lognormal_params, sample_lognormal_dist, lognormal_clipped_mean, get_cond_mean_bounds
 
-st.set_page_config(page_title="Stress Test - Monte Carlo", layout="wide")
+st.set_page_config(page_title="Tradesystem Stress Test - Monte Carlo", layout="wide")
 
 # Custom CSS for light theme
 st.markdown("""
@@ -38,7 +38,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧪 Strategy Stress Test")
+st.title("🧪 Tradesystem Stress Test")
 st.markdown("Test your strategy against non-linear distributions and outliers.")
 
 def get_gamma_params(mean, std, loc):
