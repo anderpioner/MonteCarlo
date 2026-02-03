@@ -253,7 +253,7 @@ with st.spinner("Simulating..."):
     fig.add_annotation(
         xref="paper", yref="paper",
         x=0.01, y=0.99,
-        text=f"<b>Equity Growth under Stress</b><br><span style='font-size: 12px; color: #666'>(Final Median: ${median_path[-1]:,.2f})</span>",
+        text=f"<b>Equity Growth</b><br><span style='font-size: 12px; color: #666'>(Final Median: ${median_path[-1]:,.2f})</span>",
         showarrow=False,
         font=dict(size=18, color="#333"),
         align="left",
