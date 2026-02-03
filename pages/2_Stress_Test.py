@@ -70,7 +70,7 @@ with col_dist1:
         wr_min_p = st.number_input("Min Plausible Win Rate (%)", value=14.3, help="The lowest win rate you think is realistically possible. The simulation will actively clip (limit) any sampled win rate to this minimum value to ensure realism.") / 100.0
         wr_max_p = st.number_input("Max Plausible Win Rate (%)", value=44.7, help="The highest win rate you believe the system can achieve. The simulation will actively clip (limit) any sampled win rate to this maximum value.") / 100.0
         
-        st.caption("This section uses a Beta distribution because win rates are proportions (0–1) that naturally vary and stay bounded. It captures regime changes (bad markets ~18%, good ~30%) much better than a fixed percentage. [Learn more](https://distribution-explorer.github.io/continuous/beta.html)")
+        st.caption("This section uses a Beta distribution because win rates are proportions (0–1) that naturally vary and stay bounded. It captures regime changes (e.g. bad markets ~18%, good ~30%) much better than a fixed percentage. [Learn more](https://distribution-explorer.github.io/continuous/beta.html)")
         
         wr_alpha, wr_beta = get_beta_params(wr_avg, wr_vol)
         
@@ -83,7 +83,7 @@ with col_dist1:
         suggested_max = beta.ppf(0.995, wr_alpha, wr_beta)
         
         st.markdown(f"""
-        <div style="background-color: #e7f3ff; padding: 10px; border-radius: 5px; border-left: 5px solid #007bff; margin-top: 10px;">
+        <div style="background-color: #e7f3ff; padding: 10px; border-radius: 5px; border-left: 5px solid #007bff; margin-top: 20px; margin-bottom: 15px;">
             <p style="margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #0056b3;">💡 Symmetrical Suggestion</p>
             <p style="margin: 0; font-size: 12px; color: #333;">To avoid probability "spikes" at the edges, try using these bounds which match the distribution's natural tails:</p>
             <p style="margin-top: 5px; font-weight: bold; font-size: 12px; color: #0056b3;">Min: {suggested_min*100:.1f}% | Max: {suggested_max*100:.1f}%</p>
@@ -135,7 +135,7 @@ with col_dist2:
         rr_prob10 = rr_prob10_raw / 100.0
         rr_max_cap = st.number_input("Maximum realistic R:R (cap)", value=def_max, help="The largest R:R you consider realistic (e.g. 50×, 100×, 200×). We clip extreme values to avoid simulation instability, but still allow fat tails.")
         
-        st.caption("This section uses a Log-Normal distribution because it naturally creates fat right tails — exactly what happens in outlier-capture systems. [Learn more](https://distribution-explorer.github.io/continuous/lognormal.html)")
+        st.caption("This section uses a Log-Normal distribution because it naturally creates fat right tails — exactly what happens in outlier-capture systems where a small % of trades deliver very large payoffs and drive most of the profit. [Learn more](https://distribution-explorer.github.io/continuous/lognormal.html)")
         
         # Check Math Limits for the conditional mean
         min_limit, max_limit = get_cond_mean_bounds(np.log(rr_median), 10)
