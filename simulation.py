@@ -52,7 +52,7 @@ def run_monte_carlo(starting_balance, trades_per_sim, win_rate, rr_ratio, risk_p
 def get_beta_params(mean, std):
     """
     Converts Mean (mu) and Std Dev (sigma) to Beta parameters Alpha and Beta.
-    Fórmula:
+    Formula:
     alpha = (mu^2 * (1-mu) / sigma^2) - mu
     beta = alpha * (1-mu) / mu
     """
@@ -93,18 +93,92 @@ def sample_gamma_dist(shape, scale, loc, size, clip_min=None, clip_max=None):
         
     return samples
 
-def get_lognormal_params(median, mean, prob_gt_10=None):
+def lognormal_cond_mean(mu, sigma, T=10):
     """
-    Converts Median and Mean to Log-Normal mu and sigma.
+    Calculates E[X | X < T] for X ~ LogNormal(mu, sigma).
+    Formula: E[X | X < T] = E[X] * Phi((ln(T) - mu - sigma^2) / sigma) / Phi((ln(T) - mu) / sigma)
+    where Phi is the standard normal CDF.
+    """
+    from scipy.stats import norm
+    if sigma <= 0: return np.exp(mu)
+    
+    phi1 = norm.cdf((np.log(T) - mu - sigma**2) / sigma)
+    phi2 = norm.cdf((np.log(T) - mu) / sigma)
+    
+    if phi2 < 1e-10: return np.exp(mu) # Fallback for extreme cases
+    
+    total_mean = np.exp(mu + (sigma**2 / 2))
+    return total_mean * (phi1 / phi2)
+
+def lognormal_clipped_mean(mu, sigma, U):
+    """
+    Calculates E[clip(X, 0, U)] for X ~ LogNormal(mu, sigma).
+    This handles the impact of 'rr_max_cap' on the expectancy.
+    """
+    from scipy.stats import norm
+    if sigma <= 0: return min(np.exp(mu), U)
+    
+    phi_d1 = norm.cdf((np.log(U) - mu - sigma**2) / sigma)
+    phi_d0 = norm.cdf((np.log(U) - mu) / sigma)
+    
+    unclipped_mean = np.exp(mu + (sigma**2 / 2))
+    
+    return unclipped_mean * phi_d1 + U * (1 - phi_d0)
+
+def get_cond_mean_bounds(mu, T=10):
+    """
+    Finds the mathematical range [min, max] of E[X | X < T] for a fixed mu.
+    """
+    from scipy.optimize import minimize_scalar
+    
+    # Maximize E[X | X < T]
+    res_max = minimize_scalar(lambda s: -lognormal_cond_mean(mu, s, T), bounds=(0.01, 10.0), method='bounded')
+    max_val = -res_max.fun
+    
+    # For Log-Normal, as sigma -> 0, E[X|X<T] -> Median (if Median < T)
+    # As sigma -> infinity, E[X|X<T] -> 0
+    # So the range is effectively (0, max_val] if we consider all sigmas.
+    # However, for very small sigma, the mean is Median.
+    min_at_tiny_sigma = lognormal_cond_mean(mu, 0.001, T)
+    
+    return min_at_tiny_sigma, max_val
+
+def get_lognormal_params(median, mean_no_outliers, prob_gt_10=None):
+    """
+    Converts Median and Conditional Mean (mean of values < 10) to Log-Normal mu and sigma.
     If prob_gt_10 (probability R:R > 10) is provided, it adjusts sigma to ensure the tail is fat enough.
     """
     mu = np.log(median)
     
-    # 1. Sigma derived from Mean: Mean = Median * exp(sigma^2 / 2)
-    if mean > median:
-        sigma_mean = np.sqrt(2 * np.log(mean / median))
-    else:
-        sigma_mean = 0.5
+    # 1. Sigma derived from Mean WITHOUT outliers (X < 10)
+    # We solve: lognormal_cond_mean(mu, sigma, 10) = mean_no_outliers
+    from scipy.optimize import brentq
+    
+    # Check mathematical limits
+    min_p, max_p = get_cond_mean_bounds(mu, 10)
+    
+    def objective(s):
+        return lognormal_cond_mean(mu, s, 10) - mean_no_outliers
+    
+    try:
+        if mean_no_outliers >= max_p:
+            # If requested mean is too high, use sigma that gets closest to max
+            from scipy.optimize import minimize_scalar
+            res = minimize_scalar(lambda s: -lognormal_cond_mean(mu, s, 10), bounds=(0.01, 10.0), method='bounded')
+            sigma_mean = res.x
+        elif mean_no_outliers <= min_p:
+            # If requested mean is too low for small sigma, it must be because sigma is LARGE (tail hollowing)
+            # OR requested mean is simply very small. We search in the large sigma range.
+            if mean_no_outliers <= 0.01: 
+                sigma_mean = 10.0
+            else:
+                # Search for sigma > sigma_at_max to pull the mean down
+                sigma_mean = brentq(objective, 1.0, 20.0)
+        else:
+            # Solution exists between 0.001 and the peak
+            sigma_mean = brentq(objective, 0.001, 10.0)
+    except Exception:
+        sigma_mean = 0.5 # Fallback
         
     # 2. Sigma derived from Probability > 10:
     # P(X > 10) = 1 - Phi((ln(10) - mu) / sigma) = prob_gt_10
@@ -118,8 +192,7 @@ def get_lognormal_params(median, mean, prob_gt_10=None):
     else:
         sigma_calib = 0
         
-    # Pick the most conservative (fattest tail) sigma that satisfies the "outlier capture" spirit
-    # Usually, if user says "Agressive", they want a very fat tail.
+    # Pick the most conservative (fattest tail) sigma
     sigma = max(sigma_mean, sigma_calib)
 
     return mu, sigma

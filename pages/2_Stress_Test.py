@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
-from simulation import run_monte_carlo, get_beta_params, sample_beta_dist, get_lognormal_params, sample_lognormal_dist
+from simulation import run_monte_carlo, get_beta_params, sample_beta_dist, get_lognormal_params, sample_lognormal_dist, lognormal_clipped_mean, get_cond_mean_bounds
 
 st.set_page_config(page_title="Stress Test - Monte Carlo", layout="wide")
 
@@ -83,12 +83,12 @@ with col_dist2:
         st.markdown("📈 **Model:** Log-Normal Distribution")
         st.info("Outlier Capture Model (Fat Tail).")
         
-        def_median, def_mean, def_prob10, def_max = 5.0, 20.0, 0.25, 60.0
+        def_median, def_mean, def_prob10, def_max = 3.0, 3.38, 0.10, 60.0
 
-        st.caption("This section uses a Log-Normal distribution to create realistic fat right tails — perfect for systems where a small % of trades deliver very large payoffs and drive most of the profit.")
+        st.caption("This section uses a Log-Normal distribution because it naturally creates fat right tails — perfect for systems where a small % of trades deliver very large payoffs and drive most of the profit.")
         
-        rr_median = st.number_input("Median R:R (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades. Many outlier systems have low median (2–4×) but high average due to rare big winners. We use Log-Normal distribution here.")
-        rr_mean = st.number_input("Average (mean) R:R", value=def_mean, help="The long-term average R:R, pulled higher by big outlier wins. Higher average with low median = stronger dependence on rare big winners → higher potential profit but also more volatility.")
+        rr_median = st.number_input("Median R:R (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades. For outlier systems, this is usually low (2–4×).")
+        rr_mean_cond = st.number_input("Average R:R (excluding outliers > 10:1)", value=def_mean, min_value=1.1, max_value=9.9, help="The average size of your 'normal' (non-outlier) winning trades. Must be less than 10. The system will automatically add the big outliers on top of this based on the percentage you provide below.")
         
         rr_tail_help = """
         This is a percentage (%).  
@@ -125,7 +125,41 @@ with col_dist2:
         
         st.caption("This section uses a Log-Normal distribution because it naturally creates fat right tails — exactly what happens in outlier-capture systems. [Learn more](https://distribution-explorer.github.io/continuous/lognormal.html)")
         
-        rr_mu, rr_sigma = get_lognormal_params(rr_median, rr_mean, rr_prob10)
+        # Check Math Limits for the conditional mean
+        min_limit, max_limit = get_cond_mean_bounds(np.log(rr_median), 10)
+        
+        if rr_mean_cond > max_limit:
+            st.error(f"⚠️ **Too High:** For a Median of {rr_median}, the highest possible average for normal trades (<10:1) is **{max_limit:.2f}**. The system will use {max_limit:.2f} instead.")
+            rr_mean_actual_input = max_limit
+        elif rr_mean_cond < min_limit:
+            # If Median=5 and Input=2, min_limit is probably around 5.0. 
+            # Values below median are possible but require huge variance which isn't what the user likely wants.
+            st.error(f"⚠️ **Too Low:** For a Median of {rr_median}, the typical average for normal trades (<10:1) should be at least **{min_limit:.2f}**. Your input of {rr_mean_cond} is mathematically inconsistent. The system will adjust parameters to get as close as possible.")
+            rr_mean_actual_input = rr_mean_cond # Solver will handle it by increasing sigma
+        else:
+            rr_mean_actual_input = rr_mean_cond
+
+        rr_mu, rr_sigma = get_lognormal_params(rr_median, rr_mean_actual_input, rr_prob10)
+        
+        # Theoretical Total Mean (Unclipped)
+        total_theo_mean = np.exp(rr_mu + (rr_sigma**2 / 2))
+        
+        # Simulated Total Mean (Clipped at rr_max_cap)
+        simulated_mean = lognormal_clipped_mean(rr_mu, rr_sigma, rr_max_cap)
+        
+        st.metric("Final Simulated Average R:R", f"{simulated_mean:.2f}", help=f"""
+        This is the actual average R:R used in the simulation. 
+        
+        **How it's calculated:**
+        1. **Model Fit:** The system finds a Log-Normal distribution that perfectly fits your "Median R:R", your "Average for normal trades (<10:1)", and your "Outlier %".
+        2. **Clipping:** Since outliers can theoretically be infinite in a Log-Normal model, we 'clip' (cap) values at your "Maximum realistic R:R" ({rr_max_cap}).
+        3. **Expected Value:** This metric is the mathematical average of that capped distribution.
+        
+        *Note: Without the cap, the mathematical average would be {total_theo_mean:.2f}.*
+        """)
+
+        if total_theo_mean > simulated_mean * 1.5:
+            st.warning(f"⚠️ **Heavy Clipping:** The distribution's tail is much fatter than your Cap ({rr_max_cap}). You are losing significant expectancy ({total_theo_mean - simulated_mean:.2f} R) due to the cap. Consider increasing the Maximum realistic R:R if you believe larger winners are possible.")
 
 st.markdown("---")
 if st.button("🚀 Run Stress Test", type="primary", use_container_width=True):
@@ -133,12 +167,27 @@ if st.button("🚀 Run Stress Test", type="primary", use_container_width=True):
 st.markdown("---")
 
 # Visualization of Distributions
-st.subheader("Previewing Distributions (PDF)")
-
 # Sampling for preview
 preview_size = 10000
 wr_samples = sample_beta_dist(wr_alpha, wr_beta, preview_size)
 rr_samples = sample_lognormal_dist(rr_mu, rr_sigma, preview_size, clip_min=0.1, clip_max=rr_max_cap)
+
+# Statistical Calculations (Preview)
+p5 = np.percentile(wr_samples, 5)
+p50 = np.percentile(wr_samples, 50)
+p95 = np.percentile(wr_samples, 95)
+prob_out = (np.sum(wr_samples < wr_min_p) + np.sum(wr_samples > wr_max_p)) / preview_size
+
+p50_rr = np.percentile(rr_samples, 50)
+p75_rr = np.percentile(rr_samples, 75)
+p90_rr = np.percentile(rr_samples, 90)
+p95_rr = np.percentile(rr_samples, 95)
+p99_rr = np.percentile(rr_samples, 99)
+prob_gt10 = np.mean(rr_samples > 10)
+prob_gt20 = np.mean(rr_samples > 20)
+prob_gt50 = np.mean(rr_samples > 50)
+
+st.subheader("Previewing Distributions (PDF)")
 
 prev_col1, prev_col2 = st.columns(2)
 
@@ -153,18 +202,6 @@ with prev_col1:
         else:
             st.warning("Win Rate volatility too low to generate density curve.")
         
-        # Calculate Percentiles
-        p5 = np.percentile(wr_samples, 5)
-        p50 = np.percentile(wr_samples, 50)
-        p95 = np.percentile(wr_samples, 95)
-        prob_out = (np.sum(wr_samples < wr_min_p) + np.sum(wr_samples > wr_max_p)) / preview_size
-        
-        st.markdown(f"""
-        <div class="percentile-info">
-            <b>Percentiles:</b> 5%: {p5*100:.1f}% | 50%: {p50*100:.1f}% | 95%: {p95*100:.1f}%<br>
-            <b>Prob. outside [{wr_min_p*100:.0f}%, {wr_max_p*100:.0f}%]:</b> {prob_out*100:.1f}%
-        </div>
-        """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 with prev_col2:
@@ -178,31 +215,9 @@ with prev_col2:
         else:
             st.warning("R:R volatility too low to generate density curve.")
         
-        # Calculate Percentiles
-        p50_rr = np.percentile(rr_samples, 50)
-        p75_rr = np.percentile(rr_samples, 75)
-        p90_rr = np.percentile(rr_samples, 90)
-        p95_rr = np.percentile(rr_samples, 95)
-        p99_rr = np.percentile(rr_samples, 99)
-        
-        # Probabilities
-        prob_gt10 = np.mean(rr_samples > 10)
-        prob_gt20 = np.mean(rr_samples > 20)
-        prob_gt50 = np.mean(rr_samples > 50)
-        
-        st.markdown(f"""
-        <div class="percentile-info">
-            <b>R:R Percentiles:</b> 50%: {p50_rr:.1f} | 75%: {p75_rr:.1f} | 90%: {p90_rr:.1f} | 95%: {p95_rr:.1f} | 99%: {p99_rr:.1f}<br>
-            <b>Probabilities:</b> R:R>10: {prob_gt10*100:.1f}% | R:R>20: {prob_gt20*100:.1f}% | R:R>50: {prob_gt50*100:.1f}%<br>
-            <hr style="margin: 5px 0; border: 0; border-top: 1px solid #eee;">
-            <b>Real Mean (Sampled):</b> {np.mean(rr_samples):.2f}
-        </div>
-        """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-# RUN SIMULATION
-st.markdown("---")
-
+# RUN SIMULATION (Moved up to gather metrics for Summary)
 with st.spinner("Simulating..."):
     # Rule 8: Draw ONE value p ~ Beta(α, β) for each path
     wr_vector = sample_beta_dist(wr_alpha, wr_beta, num_sims)
@@ -211,87 +226,163 @@ with st.spinner("Simulating..."):
     rr_matrix = sample_lognormal_dist(rr_mu, rr_sigma, (num_sims, trades_per_sim), clip_min=0.1, clip_max=rr_max_cap)
     
     results = run_monte_carlo(start_balance, trades_per_sim, wr_vector, rr_matrix, risk_per_trade, num_sims)
-        
-    median_path = np.median(results, axis=0)
-    x = np.arange(trades_per_sim + 1)
     
-    fig = go.Figure()
-    for i in range(num_sims):
-        fig.add_trace(go.Scatter(
-            x=x, y=results[i],
-            mode='lines',
-            line=dict(width=0.5, color='rgba(150, 150, 150, 0.1)'),
-            hoverinfo='skip', showlegend=False
-        ))
-        
-    fig.add_trace(go.Scatter(
-        x=x, y=median_path,
-        mode='lines', line=dict(width=3, color='#007bff'),
-        name='Median Curve'
-    ))
-    
-    # Calculate scale to be "centered" around paths (excluding extreme outliers)
-    all_final_values = results[:, -1]
-    y_min = np.percentile(results, 5) # 5th percentile of all points
-    y_max = np.percentile(results, 95) # 95th percentile of all points
-    
-    # Ensure start balance and median are always visible
-    y_min = min(y_min, start_balance * 0.8)
-    y_max = max(y_max, median_path[-1] * 1.2)
-
-    fig.update_layout(
-        xaxis_title="Trade Number", yaxis_title="Balance ($)",
-        template="plotly_white", hovermode="x unified",
-        height=550,
-        margin=dict(l=60, r=20, t=10, b=50),
-        yaxis=dict(range=[y_min, y_max]),
-        showlegend=True,
-        legend=dict(yanchor="top", y=0.98, xanchor="right", x=0.99, bgcolor="rgba(255, 255, 255, 0.5)")
-    )
-
-    # Add Title as Annotation inside the chart
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=0.01, y=0.99,
-        text=f"<b>Equity Growth</b><br><span style='font-size: 12px; color: #666'>(Final Median: ${median_path[-1]:,.2f})</span>",
-        showarrow=False,
-        font=dict(size=18, color="#333"),
-        align="left",
-        xanchor="left", yanchor="top"
-    )
-
-    # Add annotation for final median value inside the chart
-    fig.add_annotation(
-        x=trades_per_sim,
-        y=median_path[-1],
-        text=f" <b>${median_path[-1]:,.2f}</b>",
-        showarrow=True,
-        arrowhead=2,
-        ax=-50, ay=0,
-        xanchor="right",
-        font=dict(color="#007bff", size=12),
-        bgcolor="rgba(255, 255, 255, 0.9)",
-        bordercolor="#007bff",
-        borderwidth=1,
-        borderpad=4
-    )
-    
-    st.markdown("---")
-    with st.container(border=True):
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Summary
+    # PERFORMANCE CALCULATIONS
     final_balances = results[:, -1]
+    median_final = np.median(final_balances)
+    equity_growth = ((median_final / start_balance) - 1) * 100
+    
+    # Max Drawdowns per path
+    drawdowns = []
+    for i in range(num_sims):
+        path = results[i]
+        peaks = np.maximum.accumulate(path)
+        dd = (peaks - path) / peaks
+        drawdowns.append(np.max(dd))
+    max_dd_95 = np.percentile(drawdowns, 95) * 100
+    
+    # Consecutive Losing Streaks (Median of Max Streaks)
+    # We need to simulate the trades again or check PnL
+    # Since run_monte_carlo returns balance, we find PnL differences
+    max_streaks = []
+    for i in range(num_sims):
+        path = results[i]
+        pnl = np.diff(path)
+        # 1 for loss, 0 for win
+        is_loss = (pnl < 0).astype(int)
+        # Count consecutive 1s
+        count = 0
+        max_c = 0
+        for val in is_loss:
+            if val == 1:
+                count += 1
+                max_c = max(max_c, count)
+            else:
+                count = 0
+        max_streaks.append(max_c)
+    median_streak = np.median(max_streaks)
+    mean_streak = np.mean(max_streaks)
+    p95_streak = np.percentile(max_streaks, 95)
+    
     win_sims = np.sum(final_balances > start_balance)
-    # Risk of Ruin: 40% drawdown means balance ever drops below 60% of start
     ruined_paths = np.any(results < (start_balance * 0.6), axis=1)
     bankruptcy = np.sum(ruined_paths)
+
+# CONSOLIDATED SUMMARY SECTION
+st.markdown("---")
+st.subheader("📊 Detailed Distribution Summary")
+
+summary_col1, summary_col2, summary_col3 = st.columns(3)
+
+with summary_col1:
+    with st.container(border=True):
+        st.markdown("##### Simulation Performance")
+        st.markdown(f"""
+        - **Median Equity Growth:** {equity_growth:+.1f}%
+        - **Max Drawdown (95th):** {max_dd_95:.1f}%
+        - **Max Loss Streak:** Median: {median_streak:.0f} | 95th: {p95_streak:.0f}
+        - **Total Trades per Session:** {trades_per_sim}
+        - **Profit Probability:** {(win_sims/num_sims)*100:.1f}%
+        """)
+
+with summary_col2:
+    with st.container(border=True):
+        st.markdown("##### Win Rate (Beta)")
+        st.markdown(f"""
+        - **5th Percentile:** {p5*100:.1f}%
+        - **Median (50th):** {p50*100:.1f}%
+        - **95th Percentile:** {p95*100:.1f}%
+        - **Probability outside [{wr_min_p*100:.0f}%, {wr_max_p*100:.0f}%]:** {prob_out*100:.1f}%
+        """)
+
+with summary_col3:
+    with st.container(border=True):
+        st.markdown("##### Reward:Risk (Log-Normal)")
+        st.markdown(f"""
+        - **Percentiles:** 50%: {p50_rr:.1f} | 75%: {p75_rr:.1f} | 90%: {p90_rr:.1f} | 95%: {p95_rr:.1f}
+        - **Probabilities:** R:R>10: {prob_gt10*100:.1f}% | R:R>20: {prob_gt20*100:.1f}% | R:R>50: {prob_gt50*100:.1f}%
+        - **Theoretical Mean:** {total_theo_mean:.2f}
+        - **Simulated Mean:** {np.mean(rr_samples):.2f}
+        """)
+
+# RUN SIMULATION
+st.markdown("---")
+
+median_path = np.median(results, axis=0)
+x = np.arange(trades_per_sim + 1)
+
+fig = go.Figure()
+for i in range(num_sims):
+    fig.add_trace(go.Scatter(
+        x=x, y=results[i],
+        mode='lines',
+        line=dict(width=0.5, color='rgba(150, 150, 150, 0.1)'),
+        hoverinfo='skip', showlegend=False
+    ))
     
-    s_col1, s_col2 = st.columns(2)
-    with s_col1:
-        st.success(f"Profit Probability: **{(win_sims/num_sims)*100:.1f}%**")
-    with s_col2:
-        if bankruptcy > 0:
-            st.error(f"Risk of Ruin (40% DD): **{(bankruptcy/num_sims)*100:.1f}%**")
-        else:
-            st.info("No simulation reached ruin (based on 40% drawdown).")
+fig.add_trace(go.Scatter(
+    x=x, y=median_path,
+    mode='lines', line=dict(width=3, color='#007bff'),
+    name='Median Curve'
+))
+
+# Calculate scale to be "centered" around paths (excluding extreme outliers)
+all_final_values = results[:, -1]
+y_min = np.percentile(results, 5) # 5th percentile of all points
+y_max = np.percentile(results, 95) # 95th percentile of all points
+
+# Ensure start balance and median are always visible
+y_min = min(y_min, start_balance * 0.8)
+y_max = max(y_max, median_path[-1] * 1.2)
+
+fig.update_layout(
+    xaxis_title="Trade Number", yaxis_title="Balance ($)",
+    template="plotly_white", hovermode="x unified",
+    height=550,
+    margin=dict(l=60, r=20, t=10, b=50),
+    yaxis=dict(range=[y_min, y_max]),
+    showlegend=True,
+    legend=dict(yanchor="top", y=0.98, xanchor="right", x=0.99, bgcolor="rgba(255, 255, 255, 0.5)")
+)
+
+# Add Title as Annotation inside the chart
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=0.01, y=0.99,
+    text=f"<b>Equity Growth</b><br><span style='font-size: 12px; color: #666'>(Final Median: ${median_path[-1]:,.2f})</span>",
+    showarrow=False,
+    font=dict(size=18, color="#333"),
+    align="left",
+    xanchor="left", yanchor="top"
+)
+
+# Add annotation for final median value inside the chart
+fig.add_annotation(
+    x=trades_per_sim,
+    y=median_path[-1],
+    text=f" <b>${median_path[-1]:,.2f}</b>",
+    showarrow=True,
+    arrowhead=2,
+    ax=-50, ay=0,
+    xanchor="right",
+    font=dict(color="#007bff", size=12),
+    bgcolor="rgba(255, 255, 255, 0.9)",
+    bordercolor="#007bff",
+    borderwidth=1,
+    borderpad=4
+)
+
+st.markdown("---")
+with st.container(border=True):
+    st.plotly_chart(fig, use_container_width=True)
+
+# Summary (Moved metrics calculation up, just showing Ruin here)
+s_col1, s_col2 = st.columns(2)
+with s_col1:
+    # Profit Probability already in summary_col3 above
+    pass
+with s_col2:
+    if bankruptcy > 0:
+        st.error(f"Risk of Ruin (40% DD): **{(bankruptcy/num_sims)*100:.1f}%**")
+    else:
+        st.info("No simulation reached ruin (based on 40% drawdown).")
