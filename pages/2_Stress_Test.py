@@ -147,16 +147,18 @@ with col_dist2:
         # Simulated Total Mean (Clipped at rr_max_cap)
         simulated_mean = lognormal_clipped_mean(rr_mu, rr_sigma, rr_max_cap)
         
-        st.metric("Final Simulated Average R:R", f"{simulated_mean:.2f}", help=f"""
-        This is the actual average R:R used in the simulation. 
-        
-        **How it's calculated:**
-        1. **Model Fit:** The system finds a Log-Normal distribution that perfectly fits your "Median R:R", your "Average for normal trades (<10:1)", and your "Outlier %".
-        2. **Clipping:** Since outliers can theoretically be infinite in a Log-Normal model, we 'clip' (cap) values at your "Maximum realistic R:R" ({rr_max_cap}).
-        3. **Expected Value:** This metric is the mathematical average of that capped distribution.
-        
-        *Note: Without the cap, the mathematical average would be {total_theo_mean:.2f}.*
-        """)
+        # Display metric with custom HTML to allow side-by-side uncapped value
+        st.markdown(f"""
+        <div class="metric-container" style="text-align: left; padding: 10px 15px;">
+            <div class="metric-label" style="margin-bottom: 2px;">Final Simulated Average R:R <span style="cursor:help;" title="This is the actual average R:R used in the simulation after applying the {rr_max_cap} cap.">ℹ️</span></div>
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+                <div class="metric-value" style="font-size: 28px;">{simulated_mean:.2f}</div>
+                <div style="font-size: 14px; color: #6c757d; font-weight: normal;">
+                    (Uncapped: {total_theo_mean:.2f})
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
         if total_theo_mean > simulated_mean * 1.5:
             st.info(f"ℹ️ **Model Fitting Notice:** To match your Outlier % and Median, the system is using a distribution with a very fat right tail. Since you have chosen to cap winners at **{rr_max_cap}:1** for realism, the simulation will ignore the 'infinite' mathematical tail of the Log-Normal model. This ensures your results base themselves on your realistic expectations rather than extreme statistical outliers.")
