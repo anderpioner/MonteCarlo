@@ -159,6 +159,10 @@ with col_dist2:
         # Simulated Total Mean (Clipped at rr_max_cap)
         simulated_mean = lognormal_clipped_mean(rr_mu, rr_sigma, rr_max_cap)
         
+        # Calculate naturally occurring tail (99.5th percentile) to suggest a cap
+        # This avoids the "spike" problem where many trades are clipped to the same max value
+        natural_cap = np.exp(rr_mu + 2.576 * rr_sigma) 
+        
         # Display metric with custom HTML to allow side-by-side uncapped value
         st.markdown(f"""
         <div class="metric-container" style="text-align: left; padding: 10px 15px;">
@@ -172,8 +176,17 @@ with col_dist2:
         </div>
         """, unsafe_allow_html=True)
 
-        if total_theo_mean > simulated_mean * 1.5:
-            st.info(f"ℹ️ **Model Fitting Notice:** To match your Outlier % and Median, the system is using a distribution with a very fat right tail. Since you have chosen to cap winners at **{rr_max_cap}:1** for realism, the simulation will ignore the 'infinite' mathematical tail of the Log-Normal model. This ensures your results base themselves on your realistic expectations rather than extreme statistical outliers.")
+        # Warning/Suggestion for the cap
+        if rr_max_cap < natural_cap * 0.8:
+            st.markdown(f"""
+            <div style="background-color: #fff4e5; padding: 10px; border-radius: 5px; border-left: 5px solid #ffa000; margin-top: 5px; margin-bottom: 15px;">
+                <p style="margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #b77900;">⚠️ Statistical Spike Warning</p>
+                <p style="margin: 0; font-size: 12px; color: #333;">Your cap ({rr_max_cap}:1) is significantly lower than the model's natural tail. This will create a large <b>artificial spike</b> at the end of your distribution chart.</p>
+                <p style="margin-top: 5px; font-weight: bold; font-size: 12px; color: #b77900;">Suggested Cap: {max(rr_max_cap, round(natural_cap, 0)):.0f}:1</p>
+            </div>
+            """, unsafe_allow_html=True)
+        elif total_theo_mean > simulated_mean * 1.5:
+            st.info(f"ℹ️ **Model Fitting Notice:** To match your Outlier % and Median, the system is using a distribution with a very fat right tail. Since you have chosen to cap winners at **{rr_max_cap}:1** for realism, the simulation will ignore the 'infinite' mathematical tail of the Log-Normal model.")
 
 st.markdown("---")
 num_sims = st.selectbox("Number of Simulations", options=[1000, 2000, 5000], index=0, help="Higher numbers provide more stable statistical data but take slightly longer to process.")
