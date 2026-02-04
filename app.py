@@ -21,3 +21,12 @@ st.markdown("---")
 st.markdown("**<- Select the Stress Test tool from the sidebar to get started!**")
 
 st.info("💡 Tip: Use the Stress Test to see how even a small probability of large rewards or losses can affect your long-term equity curve.")
+
+st.markdown(
+    """
+    <div style="text-align: center; color: #6c757d; font-size: 0.8rem; margin-top: 50px; opacity: 0.6;">
+        Contact: andersonpioner@gmail.com
+    </div>
+    """,
+    unsafe_allow_html=True
+)
