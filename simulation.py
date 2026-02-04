@@ -152,8 +152,18 @@ def get_lognormal_params(median, mean_no_outliers, prob_gt_10=None):
     """
     mu = np.log(median)
     
+    # 1. Sigma derived from Probability > 10:
+    # P(X > 10) = 1 - Phi((ln(10) - mu) / sigma) = prob_gt_10
+    sigma_calib = 0
+    if prob_gt_10 is not None and prob_gt_10 > 0:
+        # Cap prob at 49.9% to avoid math errors if Median < 10
+        safe_prob = min(0.499, prob_gt_10) if median < 10 else prob_gt_10
+        target_z = norm.ppf(1 - safe_prob)
+        if abs(target_z) > 1e-9:
+            sigma_calib = max(0.001, (np.log(10) - mu) / target_z)
     
-    # Check mathematical limits
+    # 2. Sigma derived from Mean of normal trades (< 10):
+    sigma_mean = 0.5 # Default fallback
     min_p, max_p = get_cond_mean_bounds(mu, 10)
     
     def objective(s):
@@ -161,37 +171,18 @@ def get_lognormal_params(median, mean_no_outliers, prob_gt_10=None):
     
     try:
         if mean_no_outliers >= max_p:
-            # If requested mean is too high, use sigma that gets closest to max
             res = minimize_scalar(lambda s: -lognormal_cond_mean(mu, s, 10), bounds=(0.01, 10.0), method='bounded')
             sigma_mean = res.x
         elif mean_no_outliers <= min_p:
-            # If requested mean is too low for small sigma, it must be because sigma is LARGE (tail hollowing)
-            # OR requested mean is simply very small. We search in the large sigma range.
             if mean_no_outliers <= 0.01: 
                 sigma_mean = 10.0
             else:
-                # Search for sigma > sigma_at_max to pull the mean down
                 sigma_mean = brentq(objective, 1.0, 20.0)
         else:
-            # Solution exists between 0.001 and the peak
             sigma_mean = brentq(objective, 0.001, 10.0)
     except Exception:
-        # If solver fails, try a fallback sigma
-        if mean_no_outliers > min_p:
-            return mu, 0.5
-        else:
-            return mu, 5.0
-        
-    # 2. Sigma derived from Probability > 10:
-    # P(X > 10) = 1 - Phi((ln(10) - mu) / sigma) = prob_gt_10
-    if prob_gt_10 is not None and prob_gt_10 > 0:
-        target_z = norm.ppf(1 - prob_gt_10)
-        if target_z != 0:
-            sigma_calib = (np.log(10) - mu) / target_z
-        else:
-            sigma_calib = 0
-    else:
-        sigma_calib = 0
+        # If solver fails, use a sigma that gets us close
+        sigma_mean = 0.5 if mean_no_outliers > min_p else 5.0
         
     # Pick the most conservative (fattest tail) sigma
     sigma = max(sigma_mean, sigma_calib)
