@@ -67,7 +67,7 @@ with col_dist1:
         st.markdown("🎲 **Model:** Beta Distribution")
         st.info("Model win rate variability across paths. Rule: p ~ Beta(α, β)")
         
-        wr_avg = st.number_input("Average Win Rate (%)", value=28.0, help="This is the long-term average win rate you expect. Internally we use a Beta distribution because it is perfect for modeling probabilities (0–100%) that vary over time.") / 100.0
+        wr_avg = st.number_input("Average Win Rate (%)", value=28.0, help="This is the long-term average win rate you expect (including breakeven trades). Internally we use a Beta distribution because it is perfect for modeling probabilities (0–100%) that vary over time.") / 100.0
         wr_vol = st.number_input("Win Rate Std Dev (%)", value=6.0, help="Controls how stable or unstable your win rate is across different market conditions. Higher value = more variation between good and bad periods → larger drawdowns possible. We use Beta distribution to keep values realistic between ~5–40%.") / 100.0
         
         wr_min_p = st.number_input("Min Plausible Win Rate (%)", value=14.3, help="The lowest win rate you think is realistically possible. The simulation will actively clip (limit) any sampled win rate to this minimum value to ensure realism.") / 100.0
@@ -188,7 +188,7 @@ st.markdown("---")
 # Sampling for preview
 preview_size = 10000
 wr_samples = sample_beta_dist(wr_alpha, wr_beta, preview_size, clip_min=wr_min_p, clip_max=wr_max_p)
-rr_samples = sample_lognormal_dist(rr_mu, rr_sigma, preview_size, clip_min=0.1, clip_max=rr_max_cap)
+rr_samples = sample_lognormal_dist(rr_mu, rr_sigma, preview_size, clip_min=0.00001, clip_max=rr_max_cap)
 
 # Statistical Calculations (Preview)
 p5 = np.percentile(wr_samples, 5)
@@ -241,7 +241,7 @@ with st.spinner("Simulating..."):
     wr_vector = sample_beta_dist(wr_alpha, wr_beta, num_sims, clip_min=wr_min_p, clip_max=wr_max_p)
     
     # Reward:Risk is still dynamic per trade within each path
-    rr_matrix = sample_lognormal_dist(rr_mu, rr_sigma, (num_sims, trades_per_sim), clip_min=0.1, clip_max=rr_max_cap)
+    rr_matrix = sample_lognormal_dist(rr_mu, rr_sigma, (num_sims, trades_per_sim), clip_min=0.00001, clip_max=rr_max_cap)
     
     results, outcomes_matrix = run_monte_carlo(start_balance, trades_per_sim, wr_vector, rr_matrix, risk_per_trade, num_sims)
     

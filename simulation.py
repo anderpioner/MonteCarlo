@@ -198,7 +198,7 @@ def get_lognormal_params(median, mean_no_outliers, prob_gt_10=None):
 
     return mu, sigma
 
-def sample_lognormal_dist(mu, sigma, size, clip_min=0.1, clip_max=200.0):
+def sample_lognormal_dist(mu, sigma, size, clip_min=0.00001, clip_max=200.0):
     """
     Samples from a Log-Normal distribution.
     """
