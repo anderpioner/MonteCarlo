@@ -102,7 +102,7 @@ with col_dist2:
         def_median, def_mean, def_prob10, def_max = 5.0, 5.17, 0.10, 60.0
 
 
-        rr_median = st.number_input("Median R:R of Wins (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades. For outlier systems, this is usually low (2–4×).")
+        rr_median = st.number_input("Median R:R of Wins (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades.")
         rr_mean_cond = st.number_input("Base Average R:R (Normal wins)", value=def_mean, min_value=1.1, help="The average size of your 'normal' (non-outlier) winning trades. The system will automatically add the outliers on top of this based on the percentage you provide below.")
         
         rr_threshold_mult = st.number_input("Outlier Threshold (Multiple of Base Average)", value=2.0, min_value=1.1, step=0.1, help="Defines at what point a win is considered an 'outlier'. Example: 2.0x means any win greater than 2 times your Base Average is an outlier.")
