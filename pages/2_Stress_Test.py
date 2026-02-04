@@ -166,7 +166,7 @@ with col_dist2:
         # Display metric with custom HTML to allow side-by-side uncapped value
         st.markdown(f"""
         <div class="metric-container" style="text-align: left; padding: 10px 15px;">
-            <div class="metric-label" style="margin-bottom: 2px;">Final Simulated Average R:R <span style="cursor:help;" title="This is the actual average R:R used in the simulation after applying the {rr_max_cap} cap.">ℹ️</span></div>
+            <div class="metric-label" style="margin-bottom: 2px;">Final Simulated Average R:R (Winner Trades) <span style="cursor:help;" title="This refers only to the average R:R of winning trades (after the {rr_max_cap} cap). Losers are always counted as -1R.">ℹ️</span></div>
             <div style="display: flex; align-items: baseline; gap: 12px;">
                 <div class="metric-value" style="font-size: 28px;">{simulated_mean:.2f}</div>
                 <div style="font-size: 14px; color: #6c757d; font-weight: normal;">
