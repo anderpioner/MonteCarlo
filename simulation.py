@@ -145,33 +145,33 @@ def get_cond_mean_bounds(mu, T=10):
     
     return min_at_tiny_sigma, max_val
 
-def get_lognormal_params(median, mean_no_outliers, prob_gt_10=None):
+def get_lognormal_params(median, mean_no_outliers, prob_gt_threshold=None, threshold=10.0):
     """
-    Converts Median and Conditional Mean (mean of values < 10) to Log-Normal mu and sigma.
-    If prob_gt_10 (probability R:R > 10) is provided, it adjusts sigma to ensure the tail is fat enough.
+    Converts Median and Conditional Mean (mean of values < threshold) to Log-Normal mu and sigma.
+    If prob_gt_threshold (probability R:R > threshold) is provided, it adjusts sigma to ensure the tail is fat enough.
     """
     mu = np.log(median)
     
-    # 1. Sigma derived from Probability > 10:
-    # P(X > 10) = 1 - Phi((ln(10) - mu) / sigma) = prob_gt_10
+    # 1. Sigma derived from Probability > threshold:
+    # P(X > threshold) = 1 - Phi((ln(threshold) - mu) / sigma) = prob_gt_threshold
     sigma_calib = 0
-    if prob_gt_10 is not None and prob_gt_10 > 0:
-        # Cap prob at 49.9% to avoid math errors if Median < 10
-        safe_prob = min(0.499, prob_gt_10) if median < 10 else prob_gt_10
+    if prob_gt_threshold is not None and prob_gt_threshold > 0:
+        # Cap prob to avoid extreme math errors if Median < threshold
+        safe_prob = min(0.499, prob_gt_threshold) if median < threshold else prob_gt_threshold
         target_z = norm.ppf(1 - safe_prob)
         if abs(target_z) > 1e-9:
-            sigma_calib = max(0.001, (np.log(10) - mu) / target_z)
+            sigma_calib = max(0.001, (np.log(threshold) - mu) / target_z)
     
-    # 2. Sigma derived from Mean of normal trades (< 10):
-    sigma_mean = 0.5 # Default fallback
-    min_p, max_p = get_cond_mean_bounds(mu, 10)
+    # 2. Sigma derived from Mean of normal trades (< threshold):
+    sigma_mean = 0.5 
+    min_p, max_p = get_cond_mean_bounds(mu, threshold)
     
     def objective(s):
-        return lognormal_cond_mean(mu, s, 10) - mean_no_outliers
+        return lognormal_cond_mean(mu, s, threshold) - mean_no_outliers
     
     try:
         if mean_no_outliers >= max_p:
-            res = minimize_scalar(lambda s: -lognormal_cond_mean(mu, s, 10), bounds=(0.01, 10.0), method='bounded')
+            res = minimize_scalar(lambda s: -lognormal_cond_mean(mu, s, threshold), bounds=(0.01, 10.0), method='bounded')
             sigma_mean = res.x
         elif mean_no_outliers <= min_p:
             if mean_no_outliers <= 0.01: 

@@ -103,7 +103,10 @@ with col_dist2:
 
 
         rr_median = st.number_input("Median R:R of Wins (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades. For outlier systems, this is usually low (2–4×).")
-        rr_mean_cond = st.number_input("Base Average R:R (Normal wins)", value=def_mean, min_value=1.1, max_value=9.9, help="The average size of your 'normal' (non-outlier) winning trades. Must be less than 10. The system will automatically add the big outliers on top of this based on the percentage you provide below.")
+        rr_mean_cond = st.number_input("Base Average R:R (Normal wins)", value=def_mean, min_value=1.1, help="The average size of your 'normal' (non-outlier) winning trades. The system will automatically add the big outliers on top of this based on the percentage you provide below.")
+        
+        rr_threshold_mult = st.number_input("Outlier Threshold (Multiple of Base)", value=2.0, min_value=1.1, step=0.1, help="Defines at what point a win is considered an 'outlier'. Example: 2.0x means any win greater than 2 times your Base Average is an outlier.")
+        rr_abs_threshold = rr_mean_cond * rr_threshold_mult
         
         rr_tail_help = """
         This is a percentage (%).  
@@ -121,15 +124,15 @@ with col_dist2:
         """
         
         rr_prob10_raw = st.number_input(
-            "Outlier Frequency (% of wins)", 
+            f"Outlier Frequency (% of wins > {rr_abs_threshold:.1f}:1)", 
             min_value=0.1, 
             max_value=60.0, 
             value=float(def_prob10 * 100), 
             step=0.5,
-            help=rr_tail_help
+            help=f"Percentage of winning trades that exceed {rr_abs_threshold:.1f}:1. These are your 'moon shots'."
         )
         
-        st.markdown('<p style="font-size: 13px; color: #666; margin-top: -10px; margin-bottom: 15px;">Both values are blended to calculate your <b>Final Simulated Average R:R</b>. A higher Outlier Frequency will "pull" the total average significantly higher than the Base Average.</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="font-size: 13px; color: #666; margin-top: -10px; margin-bottom: 15px;">Both values are blended to calculate your <b>Final Simulated Average R:R</b>. A higher frequency of wins above {rr_abs_threshold:.1f}:1 will "pull" the total average significantly higher.</p>', unsafe_allow_html=True)
 
         rr_prob10 = rr_prob10_raw / 100.0
         rr_max_cap = st.number_input("Maximum realistic R:R (cap)", value=def_max, help="The largest R:R you consider realistic (e.g. 50×, 100×, 200×). We clip extreme values to avoid simulation instability, but still allow fat tails.")
@@ -137,20 +140,18 @@ with col_dist2:
         st.caption("This section uses a Log-Normal distribution because it naturally creates fat right tails — exactly what happens in outlier-capture systems where a small % of trades deliver very large payoffs and drive most of the profit. [Learn more](https://distribution-explorer.github.io/continuous/lognormal.html)")
         
         # Check Math Limits for the conditional mean
-        min_limit, max_limit = get_cond_mean_bounds(np.log(rr_median), 10)
+        min_limit, max_limit = get_cond_mean_bounds(np.log(rr_median), rr_abs_threshold)
         
         if rr_mean_cond > max_limit:
-            st.error(f"⚠️ **Too High:** For a Median of {rr_median}, the highest possible average for normal trades (<10:1) is **{max_limit:.2f}**. The system will use {max_limit:.2f} instead.")
+            st.error(f"⚠️ **Too High:** For a Median of {rr_median}, the highest possible average for normal trades (<{rr_abs_threshold:.1f}:1) is **{max_limit:.2f}**. The system will use {max_limit:.2f} instead.")
             rr_mean_actual_input = max_limit
         elif rr_mean_cond < min_limit:
-            # If Median=5 and Input=2, min_limit is probably around 5.0. 
-            # Values below median are possible but require huge variance which isn't what the user likely wants.
-            st.error(f"⚠️ **Too Low:** For a Median of {rr_median}, the typical average for normal trades (<10:1) should be at least **{min_limit:.2f}**. Your input of {rr_mean_cond} is mathematically inconsistent. The system will adjust parameters to get as close as possible.")
+            st.error(f"⚠️ **Too Low:** For a Median of {rr_median}, the typical average for normal trades (<{rr_abs_threshold:.1f}:1) should be at least **{min_limit:.2f}**. Your input of {rr_mean_cond} is mathematically inconsistent. The system will adjust parameters to get as close as possible.")
             rr_mean_actual_input = rr_mean_cond # Solver will handle it by increasing sigma
         else:
             rr_mean_actual_input = rr_mean_cond
 
-        rr_mu, rr_sigma = get_lognormal_params(rr_median, rr_mean_actual_input, rr_prob10)
+        rr_mu, rr_sigma = get_lognormal_params(rr_median, rr_mean_actual_input, rr_prob10, threshold=rr_abs_threshold)
         
         # Theoretical Total Mean (Unclipped)
         total_theo_mean = np.exp(rr_mu + (rr_sigma**2 / 2))
