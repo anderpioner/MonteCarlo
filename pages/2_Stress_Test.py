@@ -524,7 +524,7 @@ def to_excel(sampled_data):
 
 excel_data = to_excel(sampled_data)
 st.download_button(
-    label="📥 Export Sets to Excel",
+    label="📥 Export Sets (Includes Sequences & R:R)",
     data=excel_data,
     file_name="monte_carlo_sampled_sets.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
