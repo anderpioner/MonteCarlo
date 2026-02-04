@@ -103,7 +103,7 @@ with col_dist2:
 
 
         rr_median = st.number_input("Median R:R of Wins (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades. For outlier systems, this is usually low (2–4×).")
-        rr_mean_cond = st.number_input("Average R:R of Wins (Normal range < 10:1)", value=def_mean, min_value=1.1, max_value=9.9, help="The average size of your 'normal' (non-outlier) winning trades. Must be less than 10. The system will automatically add the big outliers on top of this based on the percentage you provide below.")
+        rr_mean_cond = st.number_input("Base Average R:R (Normal wins)", value=def_mean, min_value=1.1, max_value=9.9, help="The average size of your 'normal' (non-outlier) winning trades. Must be less than 10. The system will automatically add the big outliers on top of this based on the percentage you provide below.")
         
         rr_tail_help = """
         This is a percentage (%).  
@@ -121,7 +121,7 @@ with col_dist2:
         """
         
         rr_prob10_raw = st.number_input(
-            "Outlier Win Frequency (% of WINNING trades ≥ 10:1)", 
+            "Outlier Frequency (% of wins)", 
             min_value=0.1, 
             max_value=60.0, 
             value=float(def_prob10 * 100), 
@@ -129,10 +129,7 @@ with col_dist2:
             help=rr_tail_help
         )
         
-        if rr_prob10_raw > 25.0:
-            st.warning("⚠️ High Tail Fatness (>25%): This assumes an extremely aggressive system with huge variance.")
-        elif rr_prob10_raw < 5.0:
-            st.info("ℹ️ Low Tail Fatness (<5%): This assumes a more conservative system with fewer large outliers.")
+        st.markdown('<p style="font-size: 13px; color: #666; margin-top: -10px; margin-bottom: 15px;">Both values are blended to calculate your <b>Final Simulated Average R:R</b>. A higher Outlier Frequency will "pull" the total average significantly higher than the Base Average.</p>', unsafe_allow_html=True)
 
         rr_prob10 = rr_prob10_raw / 100.0
         rr_max_cap = st.number_input("Maximum realistic R:R (cap)", value=def_max, help="The largest R:R you consider realistic (e.g. 50×, 100×, 200×). We clip extreme values to avoid simulation instability, but still allow fat tails.")
