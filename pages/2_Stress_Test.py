@@ -97,7 +97,7 @@ with col_dist2:
     with st.container(border=True):
         st.subheader("Reward:Risk")
         st.markdown("📈 **Model:** Log-Normal Distribution")
-        st.info("Outlier Capture Model (Fat Tail).")
+        st.info("Models the full spectrum of winning trade sizes, from typical results to potential outliers.")
         
         def_median, def_mean, def_prob10, def_max = 5.0, 5.17, 0.10, 60.0
 
