@@ -163,26 +163,34 @@ def get_lognormal_params(median, mean_no_outliers, prob_gt_threshold=None, thres
             sigma_calib = max(0.001, (np.log(threshold) - mu) / target_z)
     
     # 2. Sigma derived from Mean of normal trades (< threshold):
+    # We need to find sigma such that lognormal_cond_mean(mu, sigma, threshold) == mean_no_outliers
+    # The function is not monotonic: it starts at Median (sigma~0), goes to a peak, then to 0.
+    
     sigma_mean = 0.5 
-    min_p, max_p = get_cond_mean_bounds(mu, threshold)
+    # Find the peak to split the search range
+    res_max = minimize_scalar(lambda s: -lognormal_cond_mean(mu, s, threshold), bounds=(0.01, 10.0), method='bounded')
+    sigma_peak = res_max.x
+    max_p = -res_max.fun
+    min_p = lognormal_cond_mean(mu, 0.001, threshold)
     
     def objective(s):
         return lognormal_cond_mean(mu, s, threshold) - mean_no_outliers
-    
+
     try:
         if mean_no_outliers >= max_p:
-            res = minimize_scalar(lambda s: -lognormal_cond_mean(mu, s, threshold), bounds=(0.01, 10.0), method='bounded')
-            sigma_mean = res.x
+            # Target is at or above the peak, use the peak sigma
+            sigma_mean = sigma_peak
         elif mean_no_outliers <= min_p:
-            if mean_no_outliers <= 0.01: 
-                sigma_mean = 10.0
-            else:
-                sigma_mean = brentq(objective, 1.0, 20.0)
+            # Target is below the median, search in the fat-tail region (downward slope)
+            # objective(sigma_peak) is positive (target - max_p), objective(20.0) is negative
+            sigma_mean = brentq(objective, sigma_peak, 20.0)
         else:
-            sigma_mean = brentq(objective, 0.001, 10.0)
+            # Target is between Median and Peak, search in the thin-tail region (upward slope)
+            # objective(0.001) is negative (5.0 - target), objective(sigma_peak) is positive
+            sigma_mean = brentq(objective, 0.001, sigma_peak)
     except Exception:
-        # If solver fails, use a sigma that gets us close
-        sigma_mean = 0.5 if mean_no_outliers > min_p else 5.0
+        # Fallback if solver fails
+        sigma_mean = 0.5 if mean_no_outliers > min_p else 2.0
         
     # Pick the most conservative (fattest tail) sigma
     sigma = max(sigma_mean, sigma_calib)
