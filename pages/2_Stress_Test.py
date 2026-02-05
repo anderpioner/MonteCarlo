@@ -67,11 +67,11 @@ with col_dist1:
         st.markdown("🎲 **Model:** Beta Distribution")
         st.info("Model win rate variability across paths. Rule: p ~ Beta(α, β)")
         
-        wr_avg = st.number_input("Average Win Rate (%)", value=28.0, help="This is the long-term average win rate you expect (including breakeven trades). Internally we use a Beta distribution because it is perfect for modeling probabilities (0–100%) that vary over time.") / 100.0
-        wr_vol = st.number_input("Win Rate Std Dev (%)", value=6.0, help="Controls how stable or unstable your win rate is across different market conditions. Higher value = more variation between good and bad periods → larger drawdowns possible. We use Beta distribution to keep values realistic between ~5–40%.") / 100.0
+        wr_avg = st.number_input("Average Win Rate (%)", value=28.0, step=0.1, help="This is the long-term average win rate you expect (including breakeven trades). Internally we use a Beta distribution because it is perfect for modeling probabilities (0–100%) that vary over time.") / 100.0
+        wr_vol = st.number_input("Win Rate Std Dev (%)", value=6.0, step=0.1, help="Controls how stable or unstable your win rate is across different market conditions. Higher value = more variation between good and bad periods → larger drawdowns possible. We use Beta distribution to keep values realistic between ~5–40%.") / 100.0
         
-        wr_min_p = st.number_input("Min Plausible Win Rate (%)", value=14.3, help="The lowest win rate you think is realistically possible. The simulation will actively clip (limit) any sampled win rate to this minimum value to ensure realism.") / 100.0
-        wr_max_p = st.number_input("Max Plausible Win Rate (%)", value=44.7, help="The highest win rate you believe the system can achieve. The simulation will actively clip (limit) any sampled win rate to this maximum value.") / 100.0
+        wr_min_p = st.number_input("Min Plausible Win Rate (%)", value=14.3, step=0.1, help="The lowest win rate you think is realistically possible. The simulation will actively clip (limit) any sampled win rate to this minimum value to ensure realism.") / 100.0
+        wr_max_p = st.number_input("Max Plausible Win Rate (%)", value=44.7, step=0.1, help="The highest win rate you believe the system can achieve. The simulation will actively clip (limit) any sampled win rate to this maximum value.") / 100.0
         
         st.caption("This section uses a Beta distribution because win rates are proportions (0–1) that naturally vary and stay bounded. It captures regime changes (e.g. bad markets ~18%, good ~30%) much better than a fixed percentage. [Learn more](https://distribution-explorer.github.io/continuous/beta.html)")
         
@@ -102,8 +102,8 @@ with col_dist2:
         def_median, def_mean, def_prob10, def_max = 5.0, 5.17, 0.10, 60.0
 
 
-        rr_median = st.number_input("Median R:R of Wins (Typical value)", value=def_median, help="The 'middle' Reward:Risk you see in most winning trades.")
-        rr_mean_cond = st.number_input("Base Average R:R (Normal wins)", value=def_mean, min_value=1.1, help="The average size of your 'normal' (non-outlier) winning trades. The system will automatically add the outliers on top of this based on the percentage you provide below.")
+        rr_median = st.number_input("Median R:R of Wins (Typical value)", value=def_median, step=0.1, help="The 'middle' Reward:Risk you see in most winning trades.")
+        rr_mean_cond = st.number_input("Base Average R:R (Normal wins)", value=def_mean, min_value=1.1, step=0.1, help="The average size of your 'normal' (non-outlier) winning trades. The system will automatically add the outliers on top of this based on the percentage you provide below.")
         
         rr_threshold_mult = st.number_input("Outlier Threshold (Multiple of Base Average)", value=2.0, min_value=1.1, step=0.1, help="Defines at what point a win is considered an 'outlier'. Example: 2.0x means any win greater than 2 times your Base Average is an outlier.")
         rr_abs_threshold = rr_mean_cond * rr_threshold_mult
@@ -135,9 +135,9 @@ with col_dist2:
         st.markdown(f'<p style="font-size: 13px; color: #666; margin-top: -10px; margin-bottom: 15px;">Both values are blended to calculate your <b>Final Simulated Average R:R</b>. A higher frequency of wins above {rr_abs_threshold:.1f}:1 will "pull" the total average significantly higher.</p>', unsafe_allow_html=True)
 
         rr_prob10 = rr_prob10_raw / 100.0
-        rr_max_cap = st.number_input("Maximum realistic R:R (cap)", value=def_max, help="The largest R:R you consider realistic (e.g. 50×, 100×, 200×). We clip extreme values to avoid simulation instability, but still allow fat tails.")
+        rr_max_cap = st.number_input("Maximum realistic R:R (cap)", value=def_max, step=0.1, help="The largest R:R you consider realistic (e.g. 50×, 100×, 200×). We clip extreme values to avoid simulation instability, but still allow fat tails.")
         
-        st.caption("This section uses a Log-Normal distribution because it naturally creates fat right tails — exactly what happens in outlier-capture systems where a small % of trades deliver very large payoffs and drive most of the profit. [Learn more](https://distribution-explorer.github.io/continuous/lognormal.html)")
+        st.caption("This section uses a Log-Normal distribution because it naturally models the asymmetry of trading returns—where most winning trades are near the average, but larger wins are mathematically possible. [Learn more](https://distribution-explorer.github.io/continuous/lognormal.html)")
         
         # Check Math Limits for the conditional mean
         min_limit, max_limit = get_cond_mean_bounds(np.log(rr_median), rr_abs_threshold)
@@ -181,7 +181,7 @@ with col_dist2:
             st.markdown(f"""
             <div style="background-color: #fff4e5; padding: 10px; border-radius: 5px; border-left: 5px solid #ffa000; margin-top: 5px; margin-bottom: 15px;">
                 <p style="margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #b77900;">⚠️ Statistical Spike Warning</p>
-                <p style="margin: 0; font-size: 12px; color: #333;">Your cap ({rr_max_cap}:1) is significantly lower than the model's natural tail. This will create a large <b>artificial spike</b> at the end of your distribution chart.</p>
+                <p style="margin: 0; font-size: 12px; color: #333;">Your cap ({rr_max_cap}:1) is significantly lower than the model's natural tail. This will create a non linearity at the end of your distribution chart.</p>
                 <p style="margin-top: 5px; font-weight: bold; font-size: 12px; color: #b77900;">Suggested Cap: {max(rr_max_cap, round(natural_cap, 0)):.0f}:1</p>
             </div>
             """, unsafe_allow_html=True)
