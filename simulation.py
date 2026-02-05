@@ -75,6 +75,24 @@ def get_beta_params(mean, std):
     
     return alpha, beta
 
+def get_beta_params_from_pert(min_val, mode_val, max_val):
+    """
+    Derived using PERT (Program Evaluation and Review Technique) estimation.
+    Mean = (Min + 4*Mode + Max) / 6
+    Std = (Max - Min) / 6
+    
+    Then converts Mean/Std to Beta Alpha/Beta.
+    """
+    if not (min_val <= mode_val <= max_val):
+        # Fallback to mean if invalid ordering
+        mean = mode_val
+        std = (max_val - min_val) / 6 if max_val > min_val else 0.01
+    else:
+        mean = (min_val + 4 * mode_val + max_val) / 6
+        std = (max_val - min_val) / 6
+        
+    return get_beta_params(mean, std)
+
 def sample_beta_dist(alpha, beta, size, clip_min=None, clip_max=None):
     """
     Samples p ~ Beta(alpha, beta).

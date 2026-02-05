@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import plotly.figure_factory as ff
 from plotly.subplots import make_subplots
 from scipy.stats import norm, beta
-from simulation import run_monte_carlo, get_beta_params, sample_beta_dist, get_lognormal_params, sample_lognormal_dist, lognormal_clipped_mean, get_cond_mean_bounds
+from simulation import run_monte_carlo, get_beta_params, get_beta_params_from_pert, sample_beta_dist, get_lognormal_params, sample_lognormal_dist, lognormal_clipped_mean, get_cond_mean_bounds
 
 st.set_page_config(page_title="Tradesystem Stress Test - Monte Carlo", layout="wide")
 
@@ -67,31 +67,46 @@ with col_dist1:
         st.markdown("🎲 **Model:** Beta Distribution")
         st.info("Model win rate variability across paths. Rule: p ~ Beta(α, β)")
         
-        wr_avg = st.number_input("Average Win Rate (%)", value=28.0, step=0.1, help="This is the long-term average win rate you expect (including breakeven trades). Internally we use a Beta distribution because it is perfect for modeling probabilities (0–100%) that vary over time.") / 100.0
-        wr_vol = st.number_input("Win Rate Std Dev (%)", value=6.0, step=0.1, help="Controls how stable or unstable your win rate is across different market conditions. Higher value = more variation between good and bad periods → larger drawdowns possible. We use Beta distribution to keep values realistic between ~5–40%.") / 100.0
+        wr_pess = st.number_input("Pessimistic Win Rate (%)", value=22.0, step=0.1, help="Reflects performance during sub-optimal conditions, accounting for market regimes where the system faces significant headwinds or increased execution friction.") / 100.0
+        wr_typ = st.number_input("Typical Win Rate (%)", value=28.0, step=0.1, help="Most frequent win rate (Mode).") / 100.0
+        wr_opt = st.number_input("Optimistic Win Rate (%)", value=36.0, step=0.1, help="Reflects performance during peak market conditions, where the current environment aligns perfectly with the strategy’s core strengths.") / 100.0
         
-        wr_min_p = st.number_input("Min Plausible Win Rate (%)", value=14.3, step=0.1, help="The lowest win rate you think is realistically possible. The simulation will actively clip (limit) any sampled win rate to this minimum value to ensure realism.") / 100.0
-        wr_max_p = st.number_input("Max Plausible Win Rate (%)", value=44.7, step=0.1, help="The highest win rate you believe the system can achieve. The simulation will actively clip (limit) any sampled win rate to this maximum value.") / 100.0
-        
-        st.caption("This section uses a Beta distribution because win rates are proportions (0–1) that naturally vary and stay bounded. It captures regime changes (e.g. bad markets ~18%, good ~30%) much better than a fixed percentage. [Learn more](https://distribution-explorer.github.io/continuous/beta.html)")
-        
-        wr_alpha, wr_beta = get_beta_params(wr_avg, wr_vol)
+        # Calculate parameters immediately to pre-fill caps
+        wr_alpha, wr_beta = get_beta_params_from_pert(wr_pess, wr_typ, wr_opt)
         
         if wr_alpha is None:
-            st.error(f"⚠️ Impossible Std Dev: {wr_vol*100:.1f}% for mean {wr_avg*100:.1f}%. Max allowed: {np.sqrt(wr_avg*(1-wr_avg))*100:.1f}%")
+            st.error(f"⚠️ Invalid Parameters: Pessimistic <= Typical <= Optimistic rule violated.")
             st.stop()
-        
-        # Calculate naturally occurring tails (e.g. 0.5% and 99.5%)
+            
+        # Calculate naturally occurring tails (e.g. 0.5% and 99.5%) to use as defaults
         suggested_min = beta.ppf(0.005, wr_alpha, wr_beta)
         suggested_max = beta.ppf(0.995, wr_alpha, wr_beta)
         
-        st.markdown(f"""
-        <div style="background-color: #e7f3ff; padding: 10px; border-radius: 5px; border-left: 5px solid #007bff; margin-top: 20px; margin-bottom: 15px;">
-            <p style="margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #0056b3;">💡 Symmetrical Suggestion</p>
-            <p style="margin: 0; font-size: 12px; color: #333;">To avoid probability "spikes" at the edges, try using these bounds which match the distribution's natural tails:</p>
-            <p style="margin-top: 5px; font-weight: bold; font-size: 12px; color: #0056b3;">Min: {suggested_min*100:.1f}% | Max: {suggested_max*100:.1f}%</p>
-        </div>
-        """, unsafe_allow_html=True)
+        # Use dynamic keys to reset value when PERT inputs change (auto-update)
+        pert_key_suffix = f"{wr_pess}_{wr_typ}_{wr_opt}"
+        
+        # Initialize with natural tails
+        wr_min_p = suggested_min
+        wr_max_p = suggested_max
+        
+        st.caption("The system automatically derives the mathematical Beta distribution parameters from your three-point estimates, ensuring the simulated variability precisely reflects your qualitative expectations for different market regimes.")
+        st.caption("This section uses a Beta distribution because win rates are proportions (0–1) that naturally vary and stay bounded. It captures regime changes (e.g. bad markets ~18%, good ~30%) much better than a fixed percentage. [Learn more](https://distribution-explorer.github.io/continuous/beta.html)")
+        
+        use_manual_caps = st.checkbox("Override Natural Distribution Bounds? (Advanced)", value=False, help="By default, the system uses the natural mathematical limits of the Beta distribution (0.5% and 99.5% tails). Check this to manually clip the probabilities.")
+        
+        if use_manual_caps:
+            wr_min_p = st.number_input("Min Plausible Win Rate (%) (cap)", value=float(suggested_min * 100), step=0.1, key=f"min_{pert_key_suffix}", help="The lowest **PROBABILITY** of winning you consider possible for a market regime. The simulation will strictly prevent the *underlying chance* of winning from dropping below this value. **Note:** Actual 'Realized Win Rates' in short periods (e.g. 50 trades) may still vary below this due to bad luck (variance).") / 100.0
+            wr_max_p = st.number_input("Max Plausible Win Rate (%) (cap)", value=float(suggested_max * 100), step=0.1, key=f"max_{pert_key_suffix}", help="The highest **PROBABILITY** of winning you believe the system can achieve. The simulation will strictly prevent the *underlying chance* of winning from exceeding this value. **Note:** Actual 'Realized Win Rates' in short periods may still vary above this due to good luck.") / 100.0
+            
+            st.markdown(f"""
+            <div style="background-color: #e7f3ff; padding: 10px; border-radius: 5px; border-left: 5px solid #007bff; margin-top: 10px; margin-bottom: 15px;">
+                <p style="margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #0056b3;">💡 Symmetrical Suggestion</p>
+                <p style="margin: 0; font-size: 12px; color: #333;">To avoid non linearities at the edges, the system suggests these bounds which match the natural tails:</p>
+                <p style="margin-top: 5px; font-weight: bold; font-size: 12px; color: #0056b3;">Min: {suggested_min*100:.1f}% | Max: {suggested_max*100:.1f}%</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.caption(f"Using natural distribution bounds ({suggested_min*100:.1f}% — {suggested_max*100:.1f}%).")
 
 with col_dist2:
     with st.container(border=True):
@@ -541,3 +556,28 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     use_container_width=True
 )
+
+st.markdown("---")
+with st.expander("❓ FAQ"):
+    st.markdown("""
+    ### Q: Why do I see "Sampled Win Rates" that are outside my Min/Max Plausible limits?
+    
+    **A: This is due to Statistical Variance (Luck), not a bug.**
+    
+    When you set a **Min Plausible Win Rate** (e.g., 20%), the simulation guarantees that the *market condition* (the underlying probability of winning) never drops below 20%. It forces the "simulation coin" to be weighted at least 20% in your favor.
+    
+    **However:**
+    Even if you are flipping a coin that is guaranteed to land on Heads 20% of the time, if you only flip it 50 times (Sampled Run), it is statistically possible to get "unlucky" and only land 5 Heads.
+    *   **Result:** 5 wins / 50 trades = **10% Realized Win Rate**.
+    
+    The table shows this **Realized Result**. This interaction accurately models reality: even when your strategy is performing within its guaranteed parameters, you can still experience "bad runs" or "lucky runs" that fall outside your expected averages in the short term.
+    
+    ### Q: How do "Pessimistic", "Typical", and "Optimistic" inputs work?
+    
+    **A: These inputs allow you to define the shape (skew) of the Win Rate curve intuitively.**
+    
+    The system uses the **PERT (Program Evaluation and Review Technique)** method to convert your 3-point estimate into a Beta distribution. This allows you to control the probability bias without needing to guess abstract mathematical parameters like "alpha" or "beta".
+    
+    *   **If Typical is closer to Pessimistic:** The Mean drops, creating a **"Positive Skew"**. This models a system that usually performs near the bottom end but has a "fat tail" of potential upside (rare good months).
+    *   **If Typical is closer to Optimistic:** The Mean rises, creating a **"Negative Skew"**. This models a system that usually performs well but has a "fat tail" of potential downside (rare bad months).
+    """)
