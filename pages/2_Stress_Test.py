@@ -323,20 +323,23 @@ with st.spinner("Simulating..."):
 st.markdown("---")
 st.subheader("📊 Detailed Distribution Summary")
 
-summary_col1, summary_col2, summary_col3 = st.columns(3)
+with st.container(border=True):
+    st.markdown("##### Simulation Performance")
+    perf_col1, perf_col2, perf_col3 = st.columns(3)
+    with perf_col1:
+        st.markdown(f"**Median Equity Growth:** {equity_growth:+.1f}%")
+        st.markdown(f"**Profit Probability:** {(win_sims/num_sims)*100:.1f}%")
+    with perf_col2:
+        st.markdown(f"**Max Drawdown (95th):** {max_dd_95:.1f}%")
+        st.markdown(f"**Drawdown Std Dev:** {max_dd_std:.1f}%")
+    with perf_col3:
+        st.markdown(f"**Max Loss Streak (Median):** {median_streak:.0f}")
+        st.markdown(f"**Max Loss Streak (95th):** {p95_streak:.0f}")
+    st.caption(f"Total Trades per Session: {trades_per_sim}")
+
+summary_col1, summary_col2 = st.columns(2)
 
 with summary_col1:
-    with st.container(border=True):
-        st.markdown("##### Simulation Performance")
-        st.markdown(f"""
-        - **Median Equity Growth:** {equity_growth:+.1f}%
-        - **Max Drawdown (95th):** {max_dd_95:.1f}% | Std Dev: {max_dd_std:.1f}%
-        - **Max Loss Streak:** Median: {median_streak:.0f} | 95th: {p95_streak:.0f}
-        - **Total Trades per Session:** {trades_per_sim}
-        - **Profit Probability:** {(win_sims/num_sims)*100:.1f}%
-        """)
-
-with summary_col2:
     with st.container(border=True):
         st.markdown("##### Win Rate (Beta)")
         st.markdown(f"""
@@ -346,7 +349,7 @@ with summary_col2:
         - **Probability outside [{wr_min_p*100:.0f}%, {wr_max_p*100:.0f}%]:** {prob_out*100:.1f}%
         """)
 
-with summary_col3:
+with summary_col2:
     with st.container(border=True):
         st.markdown("##### Reward:Risk (Log-Normal)")
         st.markdown(f"""
