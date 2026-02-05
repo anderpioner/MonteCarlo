@@ -2,6 +2,12 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import io
+import sys
+import os
+
+# Add the project root to sys.path for Streamlit Cloud module resolution
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
 from plotly.subplots import make_subplots
