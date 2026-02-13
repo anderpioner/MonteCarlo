@@ -73,9 +73,9 @@ with col_dist1:
         st.markdown("🎲 **Model:** Beta Distribution")
         st.info("Model win rate variability across paths. Rule: p ~ Beta(α, β)")
         
-        wr_pess = st.number_input("Pessimistic Win Rate (%)", value=22.0, step=0.1, help="Reflects performance during sub-optimal conditions, accounting for market regimes where the system faces significant headwinds or increased execution friction.") / 100.0
-        wr_typ = st.number_input("Typical Win Rate (%)", value=28.0, step=0.1, help="Most frequent win rate (Mode).") / 100.0
-        wr_opt = st.number_input("Optimistic Win Rate (%)", value=36.0, step=0.1, help="Reflects performance during peak market conditions, where the current environment aligns perfectly with the strategy’s core strengths.") / 100.0
+        wr_pess = st.number_input("Pessimistic Win Rate (%)", value=25.0, step=0.1, help="Reflects performance during sub-optimal conditions, accounting for market regimes where the system faces significant headwinds or increased execution friction.") / 100.0
+        wr_typ = st.number_input("Typical Win Rate (%)", value=30.0, step=0.1, help="Most frequent win rate (Mode).") / 100.0
+        wr_opt = st.number_input("Optimistic Win Rate (%)", value=35.0, step=0.1, help="Reflects performance during peak market conditions, where the current environment aligns perfectly with the strategy’s core strengths.") / 100.0
         
         # Calculate parameters immediately to pre-fill caps
         wr_alpha, wr_beta = get_beta_params_from_pert(wr_pess, wr_typ, wr_opt)
@@ -120,13 +120,13 @@ with col_dist2:
         st.markdown("📈 **Model:** Log-Normal Distribution")
         st.info("Models the full spectrum of winning trade sizes, from typical results to potential outliers.")
         
-        def_median, def_mean, def_prob10, def_max = 5.0, 5.17, 0.10, 60.0
+        def_median, def_mean, def_prob10, def_max = 3.0, 3.11, 0.05, 30.0
 
 
         rr_median = st.number_input("Median R:R of Wins (Typical value)", value=def_median, step=0.1, help="The 'middle' Reward:Risk you see in most winning trades.")
         rr_mean_cond = st.number_input("Base Average R:R (Normal wins)", value=def_mean, min_value=1.1, step=0.1, help="The average size of your 'normal' (non-outlier) winning trades. The system will automatically add the outliers on top of this based on the percentage you provide below.")
         
-        rr_threshold_mult = st.number_input("Outlier Threshold (Multiple of Base Average)", value=2.0, min_value=1.1, step=0.1, help="Defines at what point a win is considered an 'outlier'. Example: 2.0x means any win greater than 2 times your Base Average is an outlier.")
+        rr_threshold_mult = st.number_input("Outlier Threshold (Multiple of Base Average)", value=3.0, min_value=1.1, step=0.1, help="Defines at what point a win is considered an 'outlier'. Example: 2.0x means any win greater than 2 times your Base Average is an outlier.")
         rr_abs_threshold = rr_mean_cond * rr_threshold_mult
         
         rr_tail_help = """
